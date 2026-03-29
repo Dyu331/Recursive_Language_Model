@@ -213,3 +213,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+#benchmark datasets
+bench_BrowseComp-Plus/
+bench_Oolong_real/

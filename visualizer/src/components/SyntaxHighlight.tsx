@@ -7,6 +7,8 @@ interface SyntaxHighlightProps {
   language?: 'python' | 'text';
 }
 
+const TOKEN_WRAP_CLASS = 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]';
+
 // Simple Python syntax highlighting
 function highlightPython(code: string): React.ReactNode[] {
   const keywords = [
@@ -34,7 +36,7 @@ function highlightPython(code: string): React.ReactNode[] {
       // Comments
       if (remaining.startsWith('#')) {
         lineElements.push(
-          <span key={`${lineIdx}-${charIdx}-comment`} className="text-[oklch(0.55_0.05_260)]">
+          <span key={`${lineIdx}-${charIdx}-comment`} className={`text-[oklch(0.55_0.05_260)] ${TOKEN_WRAP_CLASS}`}>
             {remaining}
           </span>
         );
@@ -46,7 +48,7 @@ function highlightPython(code: string): React.ReactNode[] {
       const stringMatch = remaining.match(/^(f?r?)(["'])(?:(?!\2)[^\\]|\\.)*\2/);
       if (stringMatch) {
         lineElements.push(
-          <span key={`${lineIdx}-${charIdx}-string`} className="text-[oklch(0.75_0.15_145)]">
+          <span key={`${lineIdx}-${charIdx}-string`} className={`text-[oklch(0.75_0.15_145)] ${TOKEN_WRAP_CLASS}`}>
             {stringMatch[0]}
           </span>
         );
@@ -59,7 +61,7 @@ function highlightPython(code: string): React.ReactNode[] {
       const tripleStringMatch = remaining.match(/^(["']{3})[\s\S]*?\1/);
       if (tripleStringMatch) {
         lineElements.push(
-          <span key={`${lineIdx}-${charIdx}-triplestring`} className="text-[oklch(0.75_0.15_145)]">
+          <span key={`${lineIdx}-${charIdx}-triplestring`} className={`text-[oklch(0.75_0.15_145)] ${TOKEN_WRAP_CLASS}`}>
             {tripleStringMatch[0]}
           </span>
         );
@@ -72,7 +74,7 @@ function highlightPython(code: string): React.ReactNode[] {
       const numberMatch = remaining.match(/^\b\d+\.?\d*\b/);
       if (numberMatch) {
         lineElements.push(
-          <span key={`${lineIdx}-${charIdx}-number`} className="text-[oklch(0.85_0.15_45)]">
+          <span key={`${lineIdx}-${charIdx}-number`} className={`text-[oklch(0.85_0.15_45)] ${TOKEN_WRAP_CLASS}`}>
             {numberMatch[0]}
           </span>
         );
@@ -85,7 +87,7 @@ function highlightPython(code: string): React.ReactNode[] {
       const keywordMatch = remaining.match(new RegExp(`^\\b(${keywords.join('|')})\\b`));
       if (keywordMatch) {
         lineElements.push(
-          <span key={`${lineIdx}-${charIdx}-keyword`} className="text-[oklch(0.7_0.2_320)]">
+          <span key={`${lineIdx}-${charIdx}-keyword`} className={`text-[oklch(0.7_0.2_320)] ${TOKEN_WRAP_CLASS}`}>
             {keywordMatch[0]}
           </span>
         );
@@ -98,7 +100,7 @@ function highlightPython(code: string): React.ReactNode[] {
       const builtinMatch = remaining.match(new RegExp(`^\\b(${builtins.join('|')})\\b`));
       if (builtinMatch) {
         lineElements.push(
-          <span key={`${lineIdx}-${charIdx}-builtin`} className="text-[oklch(0.8_0.15_195)]">
+          <span key={`${lineIdx}-${charIdx}-builtin`} className={`text-[oklch(0.8_0.15_195)] ${TOKEN_WRAP_CLASS}`}>
             {builtinMatch[0]}
           </span>
         );
@@ -111,7 +113,7 @@ function highlightPython(code: string): React.ReactNode[] {
       const funcMatch = remaining.match(/^(\w+)(?=\()/);
       if (funcMatch) {
         lineElements.push(
-          <span key={`${lineIdx}-${charIdx}-func`} className="text-[oklch(0.85_0.12_220)]">
+          <span key={`${lineIdx}-${charIdx}-func`} className={`text-[oklch(0.85_0.12_220)] ${TOKEN_WRAP_CLASS}`}>
             {funcMatch[0]}
           </span>
         );
@@ -124,7 +126,7 @@ function highlightPython(code: string): React.ReactNode[] {
       const operatorMatch = remaining.match(/^[+\-*/%=<>!&|^~@:.,;()\[\]{}]+/);
       if (operatorMatch) {
         lineElements.push(
-          <span key={`${lineIdx}-${charIdx}-operator`} className="text-[oklch(0.7_0.1_260)]">
+          <span key={`${lineIdx}-${charIdx}-operator`} className={`text-[oklch(0.7_0.1_260)] ${TOKEN_WRAP_CLASS}`}>
             {operatorMatch[0]}
           </span>
         );
@@ -137,7 +139,7 @@ function highlightPython(code: string): React.ReactNode[] {
       const textMatch = remaining.match(/^[^\s+\-*/%=<>!&|^~@:.,;()\[\]{}#"']+/);
       if (textMatch) {
         lineElements.push(
-          <span key={`${lineIdx}-${charIdx}-text`} className="text-foreground/90">
+          <span key={`${lineIdx}-${charIdx}-text`} className={`text-foreground/90 ${TOKEN_WRAP_CLASS}`}>
             {textMatch[0]}
           </span>
         );
@@ -162,7 +164,7 @@ function highlightPython(code: string): React.ReactNode[] {
     }
     
     result.push(
-      <div key={`line-${lineIdx}`} className="whitespace-pre">
+      <div key={`line-${lineIdx}`} className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
         {lineElements}
       </div>
     );
@@ -176,7 +178,7 @@ export function SyntaxHighlight({ code, language = 'python' }: SyntaxHighlightPr
     if (language === 'python') {
       return highlightPython(code);
     }
-    return <span className="text-foreground/90">{code}</span>;
+    return <span className={`text-foreground/90 ${TOKEN_WRAP_CLASS}`}>{code}</span>;
   }, [code, language]);
   
   return <>{highlighted}</>;

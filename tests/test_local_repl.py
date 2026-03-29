@@ -1,6 +1,7 @@
 """Comprehensive tests for LocalREPL environment."""
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 from rlm.environments.local_repl import LocalREPL
 
@@ -228,6 +229,26 @@ class TestLocalREPLCleanup:
         assert os.path.exists(temp_dir)
         repl.cleanup()
         assert not os.path.exists(temp_dir)
+
+    def test_parallel_repls_do_not_leave_process_cwd_in_deleted_temp_dir(self):
+        """Parallel LocalREPL instances should not restore cwd to a sibling temp dir that gets deleted."""
+        original_cwd = os.getcwd()
+        repls = [LocalREPL(), LocalREPL()]
+
+        def run_and_cleanup(repl: LocalREPL) -> None:
+            result = repl.execute_code("import os\nmarker = os.getcwd()")
+            assert result.stderr == ""
+            assert os.path.realpath(repl.locals["marker"]) == os.path.realpath(repl.temp_dir)
+            repl.cleanup()
+
+        try:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                list(executor.map(run_and_cleanup, repls))
+            assert os.path.isdir(os.getcwd())
+            assert os.getcwd() == original_cwd
+        finally:
+            for repl in repls:
+                repl.cleanup()
 
 
 class TestLocalREPLSimulatingRLMNoPersistence:

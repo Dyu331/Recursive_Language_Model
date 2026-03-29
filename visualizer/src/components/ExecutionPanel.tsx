@@ -1,10 +1,11 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CodeBlock } from './CodeBlock';
+import { SubLMCallCard } from './SubLMCallCard';
 import { RLMIteration } from '@/lib/types';
 
 interface ExecutionPanelProps {
@@ -114,54 +115,12 @@ export function ExecutionPanel({ iteration }: ExecutionPanelProps) {
                 {totalSubCalls > 0 ? (
                   iteration.code_blocks.flatMap((block, blockIdx) =>
                     (block.result?.rlm_calls || []).map((call, callIdx) => (
-                      <Card 
+                      <SubLMCallCard
                         key={`${blockIdx}-${callIdx}`}
-                        className="border-fuchsia-500/30 bg-fuchsia-500/5 dark:border-fuchsia-400/30 dark:bg-fuchsia-400/5"
-                      >
-                        <CardHeader className="py-3 px-4">
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <CardTitle className="text-sm flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-fuchsia-500 dark:bg-fuchsia-400" />
-                              llm_query() from Block #{blockIdx + 1}
-                            </CardTitle>
-                            <div className="flex gap-2">
-                              <Badge variant="outline" className="text-[10px] font-mono">
-                                {call.prompt_tokens} in
-                              </Badge>
-                              <Badge variant="outline" className="text-[10px] font-mono">
-                                {call.completion_tokens} out
-                              </Badge>
-                              <Badge variant="outline" className="text-[10px] font-mono">
-                                {call.execution_time.toFixed(2)}s
-                              </Badge>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="px-4 pb-4 space-y-3">
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">
-                              Prompt
-                            </p>
-                            <div className="bg-muted/50 rounded-lg p-3 max-h-40 overflow-y-auto border border-border">
-                              <pre className="text-xs whitespace-pre-wrap font-mono">
-                                {typeof call.prompt === 'string' 
-                                  ? call.prompt 
-                                  : JSON.stringify(call.prompt, null, 2)}
-                              </pre>
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">
-                              Response
-                            </p>
-                            <div className="bg-fuchsia-500/10 dark:bg-fuchsia-400/10 rounded-lg p-3 max-h-56 overflow-y-auto border border-fuchsia-500/20 dark:border-fuchsia-400/20">
-                              <pre className="text-xs whitespace-pre-wrap font-mono text-fuchsia-700 dark:text-fuchsia-300">
-                                {call.response}
-                              </pre>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
+                        call={call}
+                        index={callIdx}
+                        originLabel={`Code Block #${blockIdx + 1}`}
+                      />
                     ))
                   )
                 ) : (

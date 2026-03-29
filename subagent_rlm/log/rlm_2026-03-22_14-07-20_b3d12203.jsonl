@@ -1,0 +1,1 @@
+{"type": "metadata", "timestamp": "2026-03-22T14:07:20.587619", "root_model": "gpt-4o", "max_depth": 3, "max_iterations": 30, "backend": "openai", "backend_kwargs": {"model_name": "gpt-4o"}, "environment_type": "local", "environment_kwargs": {}, "other_backends": null}

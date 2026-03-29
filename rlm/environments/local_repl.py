@@ -1,4 +1,5 @@
 import copy
+import concurrent.futures
 import io
 import json
 import os
@@ -124,6 +125,9 @@ class LocalREPL(NonIsolatedEnv):
     Executes code in a sandboxed namespace with access to context data.
     """
 
+    _cwd_lock = threading.RLock()
+    _stable_cwd = os.getcwd()
+
     def __init__(
         self,
         lm_handler_address: tuple[str, int] | None = None,
@@ -132,6 +136,9 @@ class LocalREPL(NonIsolatedEnv):
         persistent: bool = False,
         depth: int = 1,
         subcall_fn: Callable[[str, str | None], RLMChatCompletion] | None = None,
+        reserved_subcall_fn: Callable[[str, str | None, float | None], RLMChatCompletion] | None = None,
+        subcall_budget_allocator: Callable[[int], float | None] | None = None,
+        on_subcall_batch_start: Callable[[int, int, int], None] | None = None,
         custom_tools: dict[str, Any] | None = None,
         custom_sub_tools: dict[str, Any] | None = None,
         compaction: bool = False,
@@ -141,7 +148,9 @@ class LocalREPL(NonIsolatedEnv):
 
         self.lm_handler_address = lm_handler_address
         self.subcall_fn = subcall_fn  # Callback for recursive RLM calls (depth > 1 support)
-        self.original_cwd = os.getcwd()
+        self.reserved_subcall_fn = reserved_subcall_fn
+        self.subcall_budget_allocator = subcall_budget_allocator
+        self.on_subcall_batch_start = on_subcall_batch_start
         self.temp_dir = tempfile.mkdtemp(prefix=f"repl_env_{uuid.uuid4()}_")
         self._lock = threading.Lock()
         self._context_count: int = 0
@@ -329,6 +338,36 @@ class LocalREPL(NonIsolatedEnv):
             List of responses in the same order as input prompts.
         """
         if self.subcall_fn is not None:
+            if self.depth == 1 and len(prompts) > 1:
+                max_workers = min(len(prompts), 4)
+                if self.on_subcall_batch_start is not None:
+                    self.on_subcall_batch_start(self.depth + 1, len(prompts), max_workers)
+                reserved_budgets = [None] * len(prompts)
+                if self.subcall_budget_allocator is not None:
+                    for index in range(len(prompts)):
+                        remaining_slots = len(prompts) - index
+                        reserved_budgets[index] = self.subcall_budget_allocator(remaining_slots)
+
+                def run_one(item: tuple[int, str]) -> tuple[RLMChatCompletion | None, str]:
+                    index, prompt = item
+                    try:
+                        if self.reserved_subcall_fn is not None:
+                            completion = self.reserved_subcall_fn(prompt, model, reserved_budgets[index])
+                        else:
+                            completion = self.subcall_fn(prompt, model)
+                        return completion, completion.response
+                    except Exception as e:
+                        return None, f"Error: RLM query failed - {e}"
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    batch_results = list(executor.map(run_one, enumerate(prompts)))
+
+                for completion, _ in batch_results:
+                    if completion is not None:
+                        self._pending_llm_calls.append(completion)
+
+                return [response for _, response in batch_results]
+
             results = []
             for prompt in prompts:
                 try:
@@ -450,12 +489,14 @@ class LocalREPL(NonIsolatedEnv):
     @contextmanager
     def _temp_cwd(self):
         """Temporarily change to temp directory for execution."""
-        old_cwd = os.getcwd()
-        try:
-            os.chdir(self.temp_dir)
-            yield
-        finally:
-            os.chdir(old_cwd)
+        with self._cwd_lock:
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(self.temp_dir)
+                yield
+            finally:
+                restore_cwd = old_cwd if os.path.isdir(old_cwd) else self._stable_cwd
+                os.chdir(restore_cwd)
 
     def _restore_scaffold(self) -> None:
         """Restore scaffold names after execution so overwrites (e.g. context = 'x') don't persist."""
@@ -526,10 +567,17 @@ class LocalREPL(NonIsolatedEnv):
 
     def cleanup(self):
         """Clean up temp directory and reset state."""
-        try:
-            shutil.rmtree(self.temp_dir)
-        except Exception:
-            pass
+        with self._cwd_lock:
+            try:
+                current_cwd = os.getcwd()
+            except FileNotFoundError:
+                current_cwd = None
+            try:
+                if current_cwd == self.temp_dir:
+                    os.chdir(self._stable_cwd)
+                shutil.rmtree(self.temp_dir)
+            except Exception:
+                pass
         if hasattr(self, "globals"):
             self.globals.clear()
         if hasattr(self, "locals"):

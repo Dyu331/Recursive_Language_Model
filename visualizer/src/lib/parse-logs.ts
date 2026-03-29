@@ -1,4 +1,12 @@
-import { RLMIteration, RLMLogFile, LogMetadata, RLMConfigMetadata, extractFinalAnswer } from './types';
+import {
+  RLMIteration,
+  RLMLogFile,
+  LogMetadata,
+  RLMConfigMetadata,
+  extractFinalAnswer,
+  countSubLLMCalls,
+  countSubRLMCalls,
+} from './types';
 
 // Extract the context variable from code block locals
 export function extractContextVariable(iterations: RLMIteration[]): string | null {
@@ -121,6 +129,8 @@ export function extractContextQuestion(iterations: RLMIteration[]): string {
 export function computeMetadata(iterations: RLMIteration[]): LogMetadata {
   let totalCodeBlocks = 0;
   let totalSubLMCalls = 0;
+  let totalSubLLMCalls = 0;
+  let totalSubRLMCalls = 0;
   let totalExecutionTime = 0;
   let hasErrors = false;
   let finalAnswer: string | null = null;
@@ -146,6 +156,8 @@ export function computeMetadata(iterations: RLMIteration[]): LogMetadata {
         }
         if (block.result.rlm_calls) {
           totalSubLMCalls += block.result.rlm_calls.length;
+          totalSubLLMCalls += countSubLLMCalls(block.result.rlm_calls);
+          totalSubRLMCalls += countSubRLMCalls(block.result.rlm_calls);
         }
       }
     }
@@ -159,6 +171,8 @@ export function computeMetadata(iterations: RLMIteration[]): LogMetadata {
     totalIterations: iterations.length,
     totalCodeBlocks,
     totalSubLMCalls,
+    totalSubLLMCalls,
+    totalSubRLMCalls,
     contextQuestion: extractContextQuestion(iterations),
     finalAnswer,
     totalExecutionTime,

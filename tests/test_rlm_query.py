@@ -1,8 +1,12 @@
 """Tests for rlm_query and rlm_query_batched in LocalREPL."""
 
+import asyncio
+import time
 from unittest.mock import MagicMock
 
-from rlm.core.types import RLMChatCompletion, UsageSummary
+from rlm.clients.base_lm import BaseLM
+from rlm.core.lm_handler import LMHandler
+from rlm.core.types import ModelUsageSummary, RLMChatCompletion, UsageSummary
 from rlm.environments.local_repl import LocalREPL
 
 
@@ -15,6 +19,39 @@ def _make_completion(response: str) -> RLMChatCompletion:
         usage_summary=UsageSummary(model_usage_summaries={}),
         execution_time=0.1,
     )
+
+
+class SlowAsyncLM(BaseLM):
+    def __init__(self, delays: dict[str, float], model_name: str = "slow-async-model"):
+        super().__init__(model_name=model_name)
+        self.delays = delays
+        self.call_count = 0
+
+    def completion(self, prompt: str | dict[str, object]) -> str:
+        prompt_str = prompt if isinstance(prompt, str) else str(prompt)
+        time.sleep(self.delays[prompt_str])
+        self.call_count += 1
+        return f"resp {prompt_str}"
+
+    async def acompletion(self, prompt: str | dict[str, object]) -> str:
+        prompt_str = prompt if isinstance(prompt, str) else str(prompt)
+        await asyncio.sleep(self.delays[prompt_str])
+        self.call_count += 1
+        return f"resp {prompt_str}"
+
+    def get_usage_summary(self) -> UsageSummary:
+        return UsageSummary(
+            model_usage_summaries={
+                self.model_name: ModelUsageSummary(
+                    total_calls=self.call_count,
+                    total_input_tokens=self.call_count * 10,
+                    total_output_tokens=self.call_count * 10,
+                )
+            }
+        )
+
+    def get_last_usage(self) -> ModelUsageSummary:
+        return ModelUsageSummary(total_calls=1, total_input_tokens=10, total_output_tokens=10)
 
 
 class TestRlmQueryWithSubcallFn:
@@ -149,6 +186,62 @@ class TestRlmQueryBatchedWithSubcallFn:
         subcall_fn.assert_called_once_with("only one", None)
         repl.cleanup()
 
+    def test_batched_runs_concurrently_at_top_level_and_preserves_order(self):
+        """Top-level rlm_query_batched should run subcalls concurrently and preserve input order."""
+
+        def subcall_fn(prompt: str, model: str | None = None) -> RLMChatCompletion:
+            delays = {"q1": 0.2, "q2": 0.05, "q3": 0.1}
+            time.sleep(delays[prompt])
+            return _make_completion(f"resp {prompt}")
+
+        repl = LocalREPL(subcall_fn=subcall_fn, depth=1)
+        start = time.perf_counter()
+        repl.execute_code("answers = rlm_query_batched(['q1', 'q2', 'q3'])")
+        elapsed = time.perf_counter() - start
+
+        assert repl.locals["answers"] == ["resp q1", "resp q2", "resp q3"]
+        assert elapsed < 0.3
+        repl.cleanup()
+
+    def test_batched_uses_reserved_subcalls_and_allocator(self):
+        """Top-level recursive batches should pre-allocate reservations and use the reserved subcall path."""
+
+        allocator_calls: list[int] = []
+        batch_starts: list[tuple[int, int, int]] = []
+        reserved_by_prompt: dict[str, float | None] = {}
+
+        def allocate_budget(remaining_slots: int) -> float:
+            allocator_calls.append(remaining_slots)
+            return remaining_slots / 10
+
+        def reserved_subcall_fn(
+            prompt: str,
+            model: str | None = None,
+            reserved_budget: float | None = None,
+        ) -> RLMChatCompletion:
+            reserved_by_prompt[prompt] = reserved_budget
+            return _make_completion(f"resp {prompt}")
+
+        subcall_fn = MagicMock(return_value=_make_completion("unused"))
+        repl = LocalREPL(
+            subcall_fn=subcall_fn,
+            reserved_subcall_fn=reserved_subcall_fn,
+            subcall_budget_allocator=allocate_budget,
+            on_subcall_batch_start=lambda depth, prompt_count, max_workers: batch_starts.append(
+                (depth, prompt_count, max_workers)
+            ),
+            depth=1,
+        )
+
+        repl.execute_code("answers = rlm_query_batched(['a', 'b', 'c'])")
+
+        assert repl.locals["answers"] == ["resp a", "resp b", "resp c"]
+        assert allocator_calls == [3, 2, 1]
+        assert reserved_by_prompt == {"a": 0.3, "b": 0.2, "c": 0.1}
+        assert batch_starts == [(2, 3, 3)]
+        subcall_fn.assert_not_called()
+        repl.cleanup()
+
 
 class TestRlmQueryBatchedWithoutSubcallFn:
     """Tests for rlm_query_batched when no subcall_fn."""
@@ -184,6 +277,25 @@ class TestLlmQueryDoesNotUseSubcallFn:
         assert all("Error" in a for a in repl.locals["answers"])
         subcall_fn.assert_not_called()
         repl.cleanup()
+
+
+class TestLlmQueryBatchedConcurrency:
+    def test_llm_query_batched_runs_concurrently_and_preserves_order(self):
+        delays = {"q1": 0.25, "q2": 0.05, "q3": 0.15}
+        handler = LMHandler(client=SlowAsyncLM(delays), batch_max_concurrent=3)
+        handler.start()
+        repl = LocalREPL(lm_handler_address=handler.address)
+
+        try:
+            start = time.perf_counter()
+            repl.execute_code("answers = llm_query_batched(['q1', 'q2', 'q3'])")
+            elapsed = time.perf_counter() - start
+
+            assert repl.locals["answers"] == ["resp q1", "resp q2", "resp q3"]
+            assert elapsed < 0.38
+        finally:
+            repl.cleanup()
+            handler.stop()
 
 
 class TestRlmQueryScaffoldRestoration:

@@ -25,21 +25,20 @@ load_dotenv()
 
 # Low threshold so compaction triggers after a few iterations.
 # Use 0.85 in production.
-COMPACTION_THRESHOLD_PCT = 0.02
+COMPACTION_THRESHOLD_PCT = 0.04
 
-logger = RLMLogger()
+logger = RLMLogger(log_dir="./logs")
 rlm = RLM(
-    backend="portkey",
+    backend="openai",  # Direct OpenAI call
     backend_kwargs={
-        "model_name": "@openai/gpt-5-nano",
-        "api_key": os.getenv("PORTKEY_API_KEY"),
+        "model_name": "gpt-4o",  # Use a smart model for compaction logic
+        "api_key": os.getenv("OPENAI_API_KEY"),
     },
     environment="local",
-    environment_kwargs={},
     max_depth=1,
     max_iterations=12,
     compaction=True,
-    compaction_threshold_pct=COMPACTION_THRESHOLD_PCT,
+    compaction_threshold_pct=0.04, # Keep this low to force the test
     verbose=True,
     logger=logger,
 )

@@ -8,11 +8,13 @@ Tests for the parameter propagation to child RLM instances:
 """
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock, patch
 
+import pytest
 import rlm.core.rlm as rlm_module
 from rlm import RLM
-from rlm.core.types import ModelUsageSummary, UsageSummary
+from rlm.core.types import ModelUsageSummary, RLMChatCompletion, UsageSummary
 
 
 def create_mock_lm(responses: list[str], model_name: str = "mock-model") -> Mock:
@@ -470,3 +472,127 @@ class TestSubcallCombinedParameters:
             assert child_backend_kwargs.get("api_key") == "test-key"
 
             parent.close()
+
+
+class TestSubcallConcurrency:
+    """Tests for concurrent parent-side subcall accounting."""
+
+    def test_concurrent_subcalls_accumulate_parent_cost(self):
+        """Concurrent child completions should not lose cumulative cost updates."""
+
+        class StubChildRLM:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def completion(self, prompt: str, root_prompt=None) -> RLMChatCompletion:
+                time.sleep(0.05)
+                return RLMChatCompletion(
+                    root_model="child-model",
+                    prompt=prompt,
+                    response=f"child {prompt}",
+                    usage_summary=UsageSummary(
+                        model_usage_summaries={
+                            "child-model": ModelUsageSummary(
+                                total_calls=1,
+                                total_input_tokens=10,
+                                total_output_tokens=5,
+                                total_cost=0.25,
+                            )
+                        }
+                    ),
+                    execution_time=0.05,
+                )
+
+            def close(self) -> None:
+                pass
+
+        parent = RLM(
+            backend="openai",
+            backend_kwargs={"model_name": "parent-model"},
+            max_depth=3,
+        )
+
+        with patch.object(rlm_module, "RLM", StubChildRLM):
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                results = list(executor.map(parent._subcall, ["a", "b", "c", "d"]))
+
+        assert [result.response for result in results] == ["child a", "child b", "child c", "child d"]
+        assert parent._cumulative_cost == 1.0
+
+        parent.close()
+
+
+class TestSubcallBudgetReservation:
+    """Tests for parent-side budget reservation and settlement."""
+
+    def test_budget_reservation_splits_evenly_across_remaining_slots(self):
+        """Reservations should divide remaining budget across the remaining sibling slots."""
+        parent = RLM(
+            backend="openai",
+            backend_kwargs={"model_name": "parent-model"},
+            max_depth=3,
+            max_budget=0.9,
+        )
+
+        first = parent._reserve_subcall_budget(3)
+        second = parent._reserve_subcall_budget(2)
+        third = parent._reserve_subcall_budget(1)
+
+        assert first == pytest.approx(0.3)
+        assert second == pytest.approx(0.3)
+        assert third == pytest.approx(0.3)
+        assert parent._reserved_cost == pytest.approx(0.9)
+
+        parent.close()
+
+    def test_budget_settlement_releases_reservation_and_tracks_actual_spend(self):
+        """Settling a subcall should release reserved budget and keep only actual child spend."""
+        parent = RLM(
+            backend="openai",
+            backend_kwargs={"model_name": "parent-model"},
+            max_depth=3,
+            max_budget=1.0,
+        )
+
+        parent._own_cost = 0.1
+        parent._cumulative_cost = 0.1
+        reserved = parent._reserve_subcall_budget(2)
+        parent._settle_subcall_budget(reserved, 0.2, next_depth=1)
+
+        assert parent._reserved_cost == pytest.approx(0.0)
+        assert parent._child_cost == pytest.approx(0.2)
+        assert parent._cumulative_cost == pytest.approx(0.3)
+
+        parent.close()
+
+    def test_iteration_budget_check_combines_root_and_child_cost(self):
+        """Iteration budget checks should include child spend instead of overwriting it."""
+        from rlm.core.types import RLMIteration
+
+        parent = RLM(
+            backend="openai",
+            backend_kwargs={"model_name": "parent-model"},
+            max_budget=1.0,
+        )
+        parent._child_cost = 0.4
+
+        mock_handler = Mock()
+        mock_handler.get_usage_summary.return_value = UsageSummary(
+            model_usage_summaries={
+                "parent-model": ModelUsageSummary(
+                    total_calls=1,
+                    total_input_tokens=100,
+                    total_output_tokens=50,
+                    total_cost=0.3,
+                )
+            }
+        )
+
+        iteration = RLMIteration(prompt="test", response="code", code_blocks=[])
+        parent._check_iteration_limits(iteration, 0, mock_handler)
+
+        assert parent._own_cost == pytest.approx(0.3)
+        assert parent._child_cost == pytest.approx(0.4)
+        assert parent._cumulative_cost == pytest.approx(0.7)
+
+        parent.close()

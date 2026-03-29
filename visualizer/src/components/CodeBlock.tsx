@@ -8,10 +8,59 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { cn } from '@/lib/utils';
 import { CodeBlock as CodeBlockType } from '@/lib/types';
 import { CodeWithLineNumbers } from './CodeWithLineNumbers';
+import { SubLMCallCard } from './SubLMCallCard';
 
 interface CodeBlockProps {
   block: CodeBlockType;
   index: number;
+}
+
+function formatVariableValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function getVariablePreview(value: string): string {
+  const firstLine = value.split('\n')[0] ?? '';
+  const trimmed = firstLine.trim();
+  if (trimmed.length <= 90) {
+    return trimmed || '(empty)';
+  }
+  return `${trimmed.slice(0, 90)}…`;
+}
+
+function VariableCard({ name, value }: { name: string; value: unknown }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const formattedValue = formatVariableValue(value);
+  const preview = getVariablePreview(formattedValue);
+
+  return (
+    <button
+      type="button"
+      onClick={() => setIsExpanded((current) => !current)}
+      className="min-w-0 overflow-hidden rounded border border-border bg-background px-2 py-1.5 text-left font-mono text-xs transition-colors hover:bg-muted/30"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <span className="break-all text-sky-600 dark:text-sky-400">{name}</span>
+          <span className="text-muted-foreground mx-1">=</span>
+          <span className="break-words text-amber-600 dark:text-amber-400 [overflow-wrap:anywhere]">
+            {isExpanded ? formattedValue : preview}
+          </span>
+        </div>
+        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+          {isExpanded ? 'Hide' : 'Show'}
+        </span>
+      </div>
+    </button>
+  );
 }
 
 export function CodeBlock({ block, index }: CodeBlockProps) {
@@ -74,7 +123,7 @@ export function CodeBlock({ block, index }: CodeBlockProps) {
                   Python
                 </span>
               </div>
-              <div className="code-block p-4 overflow-x-auto">
+              <div className="code-block min-w-0 p-4 overflow-hidden">
                 <CodeWithLineNumbers code={block.code} language="python" />
               </div>
             </div>
@@ -87,8 +136,8 @@ export function CodeBlock({ block, index }: CodeBlockProps) {
                     stdout
                   </span>
                 </div>
-                <pre className="code-block p-4 overflow-x-auto">
-                  <code className="text-emerald-700 dark:text-emerald-300">
+                <pre className="code-block min-w-0 whitespace-pre-wrap break-words p-4 [overflow-wrap:anywhere]">
+                  <code className="whitespace-pre-wrap break-words text-emerald-700 dark:text-emerald-300 [overflow-wrap:anywhere]">
                     {block.result.stdout}
                   </code>
                 </pre>
@@ -103,8 +152,8 @@ export function CodeBlock({ block, index }: CodeBlockProps) {
                     stderr
                   </span>
                 </div>
-                <pre className="code-block p-4 overflow-x-auto">
-                  <code className="text-red-700 dark:text-red-300">
+                <pre className="code-block min-w-0 whitespace-pre-wrap break-words p-4 [overflow-wrap:anywhere]">
+                  <code className="whitespace-pre-wrap break-words text-red-700 dark:text-red-300 [overflow-wrap:anywhere]">
                     {block.result.stderr}
                   </code>
                 </pre>
@@ -119,20 +168,13 @@ export function CodeBlock({ block, index }: CodeBlockProps) {
                     Variables
                   </span>
                 </div>
-                <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 gap-2 p-4 md:grid-cols-2 xl:grid-cols-3">
                   {Object.entries(block.result.locals).map(([key, value]) => (
-                    <div 
+                    <VariableCard
                       key={key} 
-                      className="bg-background rounded px-2 py-1.5 font-mono text-xs overflow-hidden border border-border"
-                    >
-                      <span className="text-sky-600 dark:text-sky-400">{key}</span>
-                      <span className="text-muted-foreground mx-1">=</span>
-                      <span className="text-amber-600 dark:text-amber-400 truncate">
-                        {typeof value === 'string' 
-                          ? value.length > 30 ? value.slice(0, 30) + '...' : value
-                          : JSON.stringify(value).slice(0, 30)}
-                      </span>
-                    </div>
+                      name={key}
+                      value={value}
+                    />
                   ))}
                 </div>
               </div>
@@ -148,31 +190,12 @@ export function CodeBlock({ block, index }: CodeBlockProps) {
                 </div>
                 <div className="p-4 space-y-3">
                   {block.result.rlm_calls.map((call, i) => (
-                    <div 
+                    <SubLMCallCard
                       key={i}
-                      className="border border-fuchsia-500/30 dark:border-fuchsia-400/30 rounded-lg p-3 bg-background"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <Badge className="bg-fuchsia-500 text-white dark:bg-fuchsia-400 dark:text-fuchsia-950 text-xs">
-                          llm_query #{i + 1}
-                        </Badge>
-                        <div className="flex gap-2 text-xs text-muted-foreground">
-                          <span>{call.prompt_tokens} prompt</span>
-                          <span>•</span>
-                          <span>{call.completion_tokens} completion</span>
-                        </div>
-                      </div>
-                      <div className="text-xs text-muted-foreground mb-1">Prompt:</div>
-                      <div className="text-sm bg-muted rounded p-2 mb-2 max-h-24 overflow-y-auto border border-border">
-                        {typeof call.prompt === 'string' 
-                          ? call.prompt.slice(0, 500) + (call.prompt.length > 500 ? '...' : '')
-                          : JSON.stringify(call.prompt).slice(0, 500)}
-                      </div>
-                      <div className="text-xs text-muted-foreground mb-1">Response:</div>
-                      <div className="text-sm bg-muted rounded p-2 max-h-24 overflow-y-auto border border-border">
-                        {call.response.slice(0, 500) + (call.response.length > 500 ? '...' : '')}
-                      </div>
-                    </div>
+                      call={call}
+                      index={i}
+                      originLabel={`Code Block #${index + 1}`}
+                    />
                   ))}
                 </div>
               </div>

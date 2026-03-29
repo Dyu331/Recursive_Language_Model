@@ -128,9 +128,15 @@ export function LogViewer({ logFile, onBack }: LogViewerProps) {
               variant="green"
             />
             <StatsCard
-              label="Sub-LM"
-              value={metadata.totalSubLMCalls}
+              label="Sub-LLM"
+              value={metadata.totalSubLLMCalls}
               icon="◇"
+              variant="magenta"
+            />
+            <StatsCard
+              label="Sub-RLM"
+              value={metadata.totalSubRLMCalls}
+              icon="⬡"
               variant="magenta"
             />
             <StatsCard
@@ -154,7 +160,7 @@ export function LogViewer({ logFile, onBack }: LogViewerProps) {
       <div className="flex-1 min-h-0">
         <ResizablePanelGroup orientation="horizontal">
           {/* Left Panel - Prompt & Response */}
-          <ResizablePanel defaultSize={50} minSize={20} maxSize={80}>
+          <ResizablePanel defaultSize="50%" minSize="20%" maxSize="80%">
             <div className="h-full border-r border-border">
               <TrajectoryPanel
                 iterations={iterations}
@@ -167,7 +173,7 @@ export function LogViewer({ logFile, onBack }: LogViewerProps) {
           <ResizableHandle withHandle className="bg-border hover:bg-primary/30 transition-colors" />
 
           {/* Right Panel - Code Execution & Sub-LM Calls */}
-          <ResizablePanel defaultSize={50} minSize={20} maxSize={80}>
+          <ResizablePanel defaultSize="50%" minSize="20%" maxSize="80%">
             <div className="h-full bg-background">
               <ExecutionPanel
                 iteration={iterations[selectedIteration] || null}

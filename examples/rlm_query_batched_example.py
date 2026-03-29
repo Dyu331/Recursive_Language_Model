@@ -72,7 +72,7 @@ def print_metadata_tree(result, depth=0):
 
 
 def main():
-    api_key = os.environ.get("PORTKEY_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         print("Error: PORTKEY_API_KEY not set. Set it and re-run.")
         sys.exit(1)
@@ -95,7 +95,7 @@ def main():
         },
         environment="local",
         max_depth=2,
-        max_iterations=3,
+        max_iterations=10,
         logger=logger,
         verbose=True,
     )

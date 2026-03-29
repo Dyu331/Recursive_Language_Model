@@ -6,6 +6,7 @@ Provides console output for debugging and understanding RLM execution.
 Uses a "Tokyo Night" inspired color theme.
 """
 
+import sys
 from typing import Any
 
 from rich.console import Console, Group
@@ -72,6 +73,7 @@ class VerbosePrinter:
         """
         self.enabled = enabled
         self.console = Console() if enabled else None
+        self.live_console = Console(file=sys.__stdout__) if enabled else None
         self._iteration_count = 0
 
     def print_header(
@@ -208,6 +210,16 @@ class VerbosePrinter:
         )
         self.console.print(panel)
 
+    def print_code_execution_start(self, code: str) -> None:
+        """Print that a code block is about to execute."""
+        if not self.enabled:
+            return
+
+        line = Text()
+        line.append("▸ ", style=STYLE_WARNING)
+        line.append("Code Execution Started", style=Style(color=COLORS["warning"], bold=True))
+        self.console.print(line)
+
     def print_code_execution(self, code_block: CodeBlock) -> None:
         """Print code execution details."""
         if not self.enabled:
@@ -218,7 +230,7 @@ class VerbosePrinter:
         # Header
         header = Text()
         header.append("▸ ", style=STYLE_SUCCESS)
-        header.append("Code Execution", style=Style(color=COLORS["success"], bold=True))
+        header.append("Code Execution Result", style=Style(color=COLORS["success"], bold=True))
         if result.execution_time:
             header.append(f"  ({result.execution_time:.3f}s)", style=STYLE_MUTED)
 
@@ -362,6 +374,97 @@ class VerbosePrinter:
                     execution_time=call.execution_time,
                     metadata=call.metadata,
                 )
+
+    def print_subcall_batch(self, depth: int, prompt_count: int, max_workers: int) -> None:
+        if not self.enabled:
+            return
+
+        line = Text()
+        line.append("⇉ ", style=STYLE_SECONDARY)
+        line.append("Recursive batch", style=STYLE_SECONDARY)
+        line.append("  |  depth=", style=STYLE_MUTED)
+        line.append(str(depth), style=STYLE_WARNING)
+        line.append("  |  prompts=", style=STYLE_MUTED)
+        line.append(str(prompt_count), style=STYLE_TEXT)
+        line.append("  |  workers=", style=STYLE_MUTED)
+        line.append(str(max_workers), style=STYLE_TEXT)
+        self.live_console.print(line)
+
+    def print_subcall_start(self, depth: int, model: str, prompt_preview: str) -> None:
+        if not self.enabled:
+            return
+
+        prompt_str = _to_str(prompt_preview)
+        if len(prompt_str) > 120:
+            prompt_str = prompt_str[:120] + "…"
+
+        line = Text()
+        line.append("↳ ", style=STYLE_SECONDARY)
+        line.append("Child started", style=STYLE_SECONDARY)
+        line.append("  |  depth=", style=STYLE_MUTED)
+        line.append(str(depth), style=STYLE_WARNING)
+        line.append("  |  model=", style=STYLE_MUTED)
+        line.append(model, style=STYLE_ACCENT)
+        line.append("  |  prompt=", style=STYLE_MUTED)
+        line.append(prompt_str, style=STYLE_TEXT)
+        self.live_console.print(line)
+
+    def print_subcall_complete(
+        self, depth: int, model: str, duration: float, error_or_none: str | None
+    ) -> None:
+        if not self.enabled:
+            return
+
+        line = Text()
+        line.append("↳ ", style=STYLE_SECONDARY)
+        if error_or_none is None:
+            line.append("Child completed", style=STYLE_SUCCESS)
+        else:
+            line.append("Child failed", style=STYLE_ERROR)
+        line.append("  |  depth=", style=STYLE_MUTED)
+        line.append(str(depth), style=STYLE_WARNING)
+        line.append("  |  model=", style=STYLE_MUTED)
+        line.append(model, style=STYLE_ACCENT)
+        line.append("  |  duration=", style=STYLE_MUTED)
+        line.append(f"{duration:.2f}s", style=STYLE_TEXT)
+        if error_or_none is not None:
+            error_str = _to_str(error_or_none)
+            if len(error_str) > 120:
+                error_str = error_str[:120] + "…"
+            line.append("  |  error=", style=STYLE_MUTED)
+            line.append(error_str, style=STYLE_ERROR)
+        self.live_console.print(line)
+
+    def print_subcall_budget(
+        self,
+        phase: str,
+        depth: int,
+        reserved_budget: float | None,
+        spent: float,
+        reserved_total: float,
+        available_budget: float,
+        slot_count: int | None = None,
+    ) -> None:
+        if not self.enabled:
+            return
+
+        line = Text()
+        line.append("$ ", style=STYLE_WARNING)
+        line.append(f"Subcall budget {phase}", style=STYLE_WARNING)
+        line.append("  |  depth=", style=STYLE_MUTED)
+        line.append(str(depth), style=STYLE_TEXT)
+        if slot_count is not None:
+            line.append("  |  slots=", style=STYLE_MUTED)
+            line.append(str(slot_count), style=STYLE_TEXT)
+        line.append("  |  reserved=", style=STYLE_MUTED)
+        line.append(f"${(reserved_budget or 0.0):.6f}", style=STYLE_SECONDARY)
+        line.append("  |  spent=", style=STYLE_MUTED)
+        line.append(f"${spent:.6f}", style=STYLE_TEXT)
+        line.append("  |  reserved_total=", style=STYLE_MUTED)
+        line.append(f"${reserved_total:.6f}", style=STYLE_SECONDARY)
+        line.append("  |  available=", style=STYLE_MUTED)
+        line.append(f"${available_budget:.6f}", style=STYLE_SUCCESS)
+        self.live_console.print(line)
 
     def print_budget_exceeded(self, spent: float, budget: float) -> None:
         """Print a budget exceeded warning."""
