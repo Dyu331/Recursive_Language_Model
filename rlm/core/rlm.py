@@ -45,7 +45,7 @@ from rlm.utils.token_utils import count_tokens, get_context_limit
 def _run_child_completion_entry(
     connection: Any, child_kwargs: dict[str, Any], prompt: str
 ) -> None:
-    child: "RLM" | None = None
+    child: RLM | None = None
     try:
         run_kwargs = child_kwargs.copy()
         logger_enabled = run_kwargs.pop("logger_enabled", False)
@@ -86,6 +86,9 @@ class RLM:
         custom_system_prompt: str | None = None,
         other_backends: list[ClientBackend] | None = None,
         other_backend_kwargs: list[dict[str, Any]] | None = None,
+        subagent_backend: ClientBackend | None = None,
+        subagent_backend_kwargs: dict[str, Any] | None = None,
+        subagent_model_selector: Callable[[str, int], str | None] | None = None,
         logger: RLMLogger | None = None,
         verbose: bool = False,
         persistent: bool = False,
@@ -147,6 +150,11 @@ class RLM:
 
         self.other_backends = other_backends
         self.other_backend_kwargs = other_backend_kwargs
+        self.subagent_backend = subagent_backend
+        self.subagent_backend_kwargs = (
+            subagent_backend_kwargs.copy() if subagent_backend_kwargs is not None else None
+        )
+        self.subagent_model_selector = subagent_model_selector
 
         # Custom tools: functions available in the REPL environment
         self.custom_tools = custom_tools
@@ -212,6 +220,35 @@ class RLM:
                 self.logger.log_metadata(metadata)
             self.verbose.print_metadata(metadata)
 
+    def _get_default_subagent_spec(self) -> tuple[ClientBackend, dict[str, Any] | None]:
+        if self.subagent_backend is not None or self.subagent_backend_kwargs is not None:
+            child_backend = self.subagent_backend if self.subagent_backend is not None else self.backend
+            if self.subagent_backend_kwargs is not None:
+                child_backend_kwargs = self.subagent_backend_kwargs.copy()
+            elif self.backend_kwargs is not None:
+                child_backend_kwargs = self.backend_kwargs.copy()
+            else:
+                child_backend_kwargs = None
+            return child_backend, child_backend_kwargs
+
+        if self.other_backends and self.other_backend_kwargs:
+            return self.other_backends[0], self.other_backend_kwargs[0].copy()
+
+        return self.backend, self.backend_kwargs.copy() if self.backend_kwargs is not None else None
+
+    def _resolve_subagent_spec(
+        self, prompt: str, next_depth: int, model: str | None = None
+    ) -> tuple[ClientBackend, dict[str, Any] | None, str]:
+        child_backend, child_backend_kwargs = self._get_default_subagent_spec()
+        selected_model = model
+        if selected_model is None and self.subagent_model_selector is not None:
+            selected_model = self.subagent_model_selector(prompt, next_depth)
+        if selected_model is not None:
+            child_backend_kwargs = child_backend_kwargs.copy() if child_backend_kwargs is not None else {}
+            child_backend_kwargs["model_name"] = selected_model
+        resolved_model = selected_model or (child_backend_kwargs or {}).get("model_name", "unknown")
+        return child_backend, child_backend_kwargs, resolved_model
+
     @contextmanager
     def _spawn_completion_context(self, prompt: str | dict[str, Any]):
         """
@@ -225,10 +262,20 @@ class RLM:
 
         # Create other_backend_client if provided (for depth=1 routing)
         other_backend_client: BaseLM | None = None
-        if self.other_backends and self.other_backend_kwargs:
-            other_backend_client = get_client(self.other_backends[0], self.other_backend_kwargs[0])
+        default_subagent_backend, default_subagent_backend_kwargs = self._get_default_subagent_spec()
+        if (
+            default_subagent_backend != self.backend
+            or default_subagent_backend_kwargs != self.backend_kwargs
+        ):
+            other_backend_client = get_client(
+                default_subagent_backend,
+                default_subagent_backend_kwargs or {},
+            )
 
         lm_handler = LMHandler(client, other_backend_client=other_backend_client)
+
+        if other_backend_client is not None and other_backend_client.model_name != client.model_name:
+            lm_handler.register_client(other_backend_client.model_name, other_backend_client)
 
         # Register other clients to be available as sub-call options (by model name)
         if self.other_backends and self.other_backend_kwargs:
@@ -756,13 +803,14 @@ class RLM:
 
     def _build_child_kwargs(
         self,
+        child_backend: ClientBackend,
         child_backend_kwargs: dict[str, Any] | None,
         next_depth: int,
         remaining_budget: float | None,
         remaining_timeout: float | None,
     ) -> dict[str, Any]:
         return {
-            "backend": self.backend,
+            "backend": child_backend,
             "backend_kwargs": child_backend_kwargs,
             "environment": self.environment_type,
             "environment_kwargs": self.environment_kwargs,
@@ -776,6 +824,11 @@ class RLM:
             "custom_system_prompt": self.system_prompt,
             "other_backends": self.other_backends,
             "other_backend_kwargs": self.other_backend_kwargs,
+            "subagent_backend": self.subagent_backend,
+            "subagent_backend_kwargs": self.subagent_backend_kwargs.copy()
+            if self.subagent_backend_kwargs is not None
+            else None,
+            "subagent_model_selector": self.subagent_model_selector,
             "logger_enabled": self.logger is not None,
             "custom_tools": self.custom_sub_tools,
             "custom_sub_tools": self.custom_sub_tools,
@@ -819,12 +872,9 @@ class RLM:
     ) -> RLMChatCompletion:
         next_depth = self.depth + 1
 
-        if model is not None:
-            child_backend_kwargs = (self.backend_kwargs or {}).copy()
-            child_backend_kwargs["model_name"] = model
-        else:
-            child_backend_kwargs = self.backend_kwargs
-        resolved_model = model or (child_backend_kwargs or {}).get("model_name", "unknown")
+        child_backend, child_backend_kwargs, resolved_model = self._resolve_subagent_spec(
+            prompt, next_depth, model
+        )
 
         if next_depth >= self.max_depth:
             return self._subcall(prompt, model=model, reserved_budget=reserved_budget)
@@ -874,7 +924,11 @@ class RLM:
         subcall_start = time.perf_counter()
         error_msg: str | None = None
         child_kwargs = self._build_child_kwargs(
-            child_backend_kwargs, next_depth, remaining_budget, remaining_timeout
+            child_backend,
+            child_backend_kwargs,
+            next_depth,
+            remaining_budget,
+            remaining_timeout,
         )
         try:
             result = self._run_child_completion_in_subprocess(child_kwargs, prompt)
@@ -935,22 +989,14 @@ class RLM:
         """
         next_depth = self.depth + 1
 
-        # Determine which backend/kwargs to use (model override or parent's default)
-        if model is not None:
-            child_backend_kwargs = (self.backend_kwargs or {}).copy()
-            child_backend_kwargs["model_name"] = model
-        else:
-            child_backend_kwargs = self.backend_kwargs
-        resolved_model = model or (child_backend_kwargs or {}).get("model_name", "unknown")
+        child_backend, child_backend_kwargs, resolved_model = self._resolve_subagent_spec(
+            prompt, next_depth, model
+        )
 
         # If we'd hit/exceed the cap, do a normal LM completion (no REPL)
         if next_depth >= self.max_depth:
-            # Use other_backend if available, otherwise use main backend
-            if self.other_backends and self.other_backend_kwargs:
-                client = get_client(self.other_backends[0], self.other_backend_kwargs[0])
-            else:
-                client = get_client(self.backend, child_backend_kwargs or {})
-            root_model = model or client.model_name
+            client = get_client(child_backend, child_backend_kwargs or {})
+            root_model = resolved_model if resolved_model != "unknown" else client.model_name
             start_time = time.perf_counter()
             try:
                 response = client.completion(prompt)
@@ -1026,7 +1072,7 @@ class RLM:
 
         # Spawn a child RLM with its own LocalREPL
         child = RLM(
-            backend=self.backend,
+            backend=child_backend,
             backend_kwargs=child_backend_kwargs,
             environment=self.environment_type,
             environment_kwargs=self.environment_kwargs,
@@ -1040,6 +1086,9 @@ class RLM:
             custom_system_prompt=self.system_prompt,
             other_backends=self.other_backends,
             other_backend_kwargs=self.other_backend_kwargs,
+            subagent_backend=self.subagent_backend,
+            subagent_backend_kwargs=self.subagent_backend_kwargs,
+            subagent_model_selector=self.subagent_model_selector,
             # Give child its own logger so its trajectory is captured in metadata
             logger=RLMLogger() if self.logger else None,
             verbose=False,

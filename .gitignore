@@ -216,5 +216,9 @@ __marimo__/
 
 
 #benchmark datasets
-bench_BrowseComp-Plus/
-bench_Oolong_real/
+bench_BrowseComp-Plus/data/
+bench_BrowseComp-Plus/logs/
+bench_BrowseComp-Plus/corpus.jsonl
+bench_Oolong_real/data/
+bench_Oolong_real/log/
+bench_Oolong_real/logs/

@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock, patch
 
 import pytest
+
 import rlm.core.rlm as rlm_module
 from rlm import RLM
 from rlm.core.types import ModelUsageSummary, RLMChatCompletion, UsageSummary
@@ -351,6 +352,99 @@ class TestSubcallModelOverride:
 
             parent.close()
 
+    def test_fixed_subagent_kwargs_override_parent_defaults(self):
+        """When subagent_backend_kwargs is set, child should use it instead of root backend_kwargs."""
+        captured_child_params = {}
+
+        original_rlm_class = rlm_module.RLM
+
+        class CapturingRLM(original_rlm_class):
+            def __init__(self, *args, **kwargs):
+                captured_child_params.update(kwargs)
+                super().__init__(*args, **kwargs)
+
+        with patch.object(rlm_module, "get_client") as mock_get_client:
+            mock_lm = create_mock_lm(["FINAL(answer)"])
+            mock_get_client.return_value = mock_lm
+
+            parent = RLM(
+                backend="openai",
+                backend_kwargs={"model_name": "parent-model", "api_key": "root-key"},
+                subagent_backend_kwargs={"model_name": "child-model", "api_key": "child-key"},
+                max_depth=3,
+            )
+
+            with patch.object(rlm_module, "RLM", CapturingRLM):
+                parent._subcall("test prompt")
+
+            child_backend_kwargs = captured_child_params.get("backend_kwargs", {})
+            assert child_backend_kwargs.get("model_name") == "child-model"
+            assert child_backend_kwargs.get("api_key") == "child-key"
+
+            parent.close()
+
+    def test_model_override_wins_over_fixed_subagent_kwargs(self):
+        """Explicit model override should take precedence over subagent_backend_kwargs."""
+        captured_child_params = {}
+
+        original_rlm_class = rlm_module.RLM
+
+        class CapturingRLM(original_rlm_class):
+            def __init__(self, *args, **kwargs):
+                captured_child_params.update(kwargs)
+                super().__init__(*args, **kwargs)
+
+        with patch.object(rlm_module, "get_client") as mock_get_client:
+            mock_lm = create_mock_lm(["FINAL(answer)"])
+            mock_get_client.return_value = mock_lm
+
+            parent = RLM(
+                backend="openai",
+                backend_kwargs={"model_name": "parent-model", "api_key": "root-key"},
+                subagent_backend_kwargs={"model_name": "child-model", "api_key": "child-key"},
+                max_depth=3,
+            )
+
+            with patch.object(rlm_module, "RLM", CapturingRLM):
+                parent._subcall("test prompt", model="override-model")
+
+            child_backend_kwargs = captured_child_params.get("backend_kwargs", {})
+            assert child_backend_kwargs.get("model_name") == "override-model"
+            assert child_backend_kwargs.get("api_key") == "child-key"
+
+            parent.close()
+
+    def test_fixed_subagent_backend_propagates_to_child(self):
+        """When subagent_backend is set, child should receive that backend."""
+        captured_child_params = {}
+
+        original_rlm_class = rlm_module.RLM
+
+        class CapturingRLM(original_rlm_class):
+            def __init__(self, *args, **kwargs):
+                captured_child_params.update(kwargs)
+                super().__init__(*args, **kwargs)
+
+        with patch.object(rlm_module, "get_client") as mock_get_client:
+            mock_lm = create_mock_lm(["FINAL(answer)"])
+            mock_get_client.return_value = mock_lm
+
+            parent = RLM(
+                backend="openai",
+                backend_kwargs={"model_name": "parent-model"},
+                subagent_backend="openrouter",
+                subagent_backend_kwargs={"model_name": "child-model"},
+                max_depth=3,
+            )
+
+            with patch.object(rlm_module, "RLM", CapturingRLM):
+                parent._subcall("test prompt")
+
+            assert captured_child_params.get("backend") == "openrouter"
+            assert captured_child_params.get("backend_kwargs", {}).get("model_name") == "child-model"
+
+            parent.close()
+
 
 class TestSubcallModelOverrideAtLeafDepth:
     """Tests for model override at max_depth (leaf LM completion)."""
@@ -421,6 +515,174 @@ class TestSubcallModelOverrideAtLeafDepth:
             if len(args) >= 2:
                 backend_kwargs = args[1]
                 assert backend_kwargs.get("model_name") == "parent-model"
+
+            parent.close()
+
+    def test_leaf_depth_uses_fixed_subagent_backend_and_model(self):
+        """Leaf completions should use the resolved fixed subagent backend and model."""
+        with patch.object(rlm_module, "get_client") as mock_get_client:
+            mock_lm = create_mock_lm(["leaf response"])
+            mock_get_client.return_value = mock_lm
+
+            parent = RLM(
+                backend="openai",
+                backend_kwargs={"model_name": "parent-model"},
+                subagent_backend="openrouter",
+                subagent_backend_kwargs={"model_name": "child-model", "api_key": "child-key"},
+                depth=1,
+                max_depth=2,
+            )
+
+            result = parent._subcall("test prompt")
+
+            call_args = mock_get_client.call_args_list
+            found_subagent_call = False
+            for call in call_args:
+                args, _ = call
+                if len(args) >= 2:
+                    backend = args[0]
+                    backend_kwargs = args[1]
+                    if (
+                        backend == "openrouter"
+                        and isinstance(backend_kwargs, dict)
+                        and backend_kwargs.get("model_name") == "child-model"
+                        and backend_kwargs.get("api_key") == "child-key"
+                    ):
+                        found_subagent_call = True
+                        break
+
+            assert found_subagent_call, (
+                f"Expected get_client to be called with openrouter/child-model, got calls: {call_args}"
+            )
+            assert result.response == "leaf response"
+
+            parent.close()
+
+
+class TestSubagentModelSelector:
+    """Tests for subagent_model_selector in child resolution."""
+
+    def test_selector_sets_child_model_when_no_explicit_override(self):
+        """Selector result should become the child's model_name when no explicit override is provided."""
+        captured_child_params = {}
+        selector_calls: list[tuple[str, int]] = []
+
+        original_rlm_class = rlm_module.RLM
+
+        class CapturingRLM(original_rlm_class):
+            def __init__(self, *args, **kwargs):
+                captured_child_params.update(kwargs)
+                super().__init__(*args, **kwargs)
+
+        def select_model(prompt: str, depth: int) -> str:
+            selector_calls.append((prompt, depth))
+            return "selector-model"
+
+        with patch.object(rlm_module, "get_client") as mock_get_client:
+            mock_lm = create_mock_lm(["FINAL(answer)"])
+            mock_get_client.return_value = mock_lm
+
+            parent = RLM(
+                backend="openai",
+                backend_kwargs={"model_name": "parent-model", "api_key": "root-key"},
+                subagent_backend_kwargs={"model_name": "child-model", "api_key": "child-key"},
+                subagent_model_selector=select_model,
+                max_depth=3,
+            )
+
+            with patch.object(rlm_module, "RLM", CapturingRLM):
+                parent._subcall("test prompt")
+
+            child_backend_kwargs = captured_child_params.get("backend_kwargs", {})
+            assert selector_calls == [("test prompt", 1)]
+            assert child_backend_kwargs.get("model_name") == "selector-model"
+            assert child_backend_kwargs.get("api_key") == "child-key"
+
+            parent.close()
+
+    def test_explicit_model_override_wins_over_selector(self):
+        """Explicit model override should bypass selector output."""
+        captured_child_params = {}
+        selector_calls: list[tuple[str, int]] = []
+
+        original_rlm_class = rlm_module.RLM
+
+        class CapturingRLM(original_rlm_class):
+            def __init__(self, *args, **kwargs):
+                captured_child_params.update(kwargs)
+                super().__init__(*args, **kwargs)
+
+        def select_model(prompt: str, depth: int) -> str:
+            selector_calls.append((prompt, depth))
+            return "selector-model"
+
+        with patch.object(rlm_module, "get_client") as mock_get_client:
+            mock_lm = create_mock_lm(["FINAL(answer)"])
+            mock_get_client.return_value = mock_lm
+
+            parent = RLM(
+                backend="openai",
+                backend_kwargs={"model_name": "parent-model", "api_key": "root-key"},
+                subagent_backend_kwargs={"model_name": "child-model", "api_key": "child-key"},
+                subagent_model_selector=select_model,
+                max_depth=3,
+            )
+
+            with patch.object(rlm_module, "RLM", CapturingRLM):
+                parent._subcall("test prompt", model="override-model")
+
+            child_backend_kwargs = captured_child_params.get("backend_kwargs", {})
+            assert selector_calls == []
+            assert child_backend_kwargs.get("model_name") == "override-model"
+            assert child_backend_kwargs.get("api_key") == "child-key"
+
+            parent.close()
+
+    def test_selector_applies_at_leaf_depth(self):
+        """Leaf completions should use the selector-resolved model when no explicit override is provided."""
+        selector_calls: list[tuple[str, int]] = []
+
+        def select_model(prompt: str, depth: int) -> str:
+            selector_calls.append((prompt, depth))
+            return "selector-leaf-model"
+
+        with patch.object(rlm_module, "get_client") as mock_get_client:
+            mock_lm = create_mock_lm(["leaf response"])
+            mock_get_client.return_value = mock_lm
+
+            parent = RLM(
+                backend="openai",
+                backend_kwargs={"model_name": "parent-model"},
+                subagent_backend="openrouter",
+                subagent_backend_kwargs={"model_name": "child-model", "api_key": "child-key"},
+                subagent_model_selector=select_model,
+                depth=1,
+                max_depth=2,
+            )
+
+            result = parent._subcall("test prompt")
+
+            call_args = mock_get_client.call_args_list
+            found_selector_call = False
+            for call in call_args:
+                args, _ = call
+                if len(args) >= 2:
+                    backend = args[0]
+                    backend_kwargs = args[1]
+                    if (
+                        backend == "openrouter"
+                        and isinstance(backend_kwargs, dict)
+                        and backend_kwargs.get("model_name") == "selector-leaf-model"
+                        and backend_kwargs.get("api_key") == "child-key"
+                    ):
+                        found_selector_call = True
+                        break
+
+            assert selector_calls == [("test prompt", 2)]
+            assert found_selector_call, (
+                f"Expected get_client to be called with openrouter/selector-leaf-model, got calls: {call_args}"
+            )
+            assert result.response == "leaf response"
 
             parent.close()
 
