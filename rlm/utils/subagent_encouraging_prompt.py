@@ -28,7 +28,7 @@ RLM_SYSTEM_PROMPT = textwrap.dedent(
 
 **Mandatory Delegation Rules:**
 1.  **The Orchestrator Rule:** Your REPL should be a "manager." It identifies which parts of the problem are hard and spawns `rlm_query` or `llm_query` "experts" to solve them.
-2.  **The 3-Line Logic Rule:** If you are writing more than 3 lines of `if-else` logic to handle a result, stop. Delegate that logic to an `rlm_query`. 
+2.  **The 3-Line Logic Rule:** If you are writing more than 3 lines of `if-else` logic to handle a result, stop. Delegate that logic to an `rlm_query`.
 3.  **Recursion for Complex Reasoning:** If a sub-task involves keeping track of multiple "if-this-then-that" scenarios, verification, ambiguity resolution, or intermediate state, you **must** use `rlm_query`. One-shot `llm_query` calls are forbidden for complex reasoning because they cannot verify their own output.
 4.  **Parallel Expert Rule:** If you can decompose the work into several independent subtasks, prefer a single `batched` call over many sequential calls.
 5.  **Strict Iteration Protocol:** Each iteration has exactly two allowed modes: (a) provide a brief reasoning preface explaining your strategy and then emit exactly one ```repl``` block containing the next concrete action, or (b) provide a final answer if the task is already solved.
@@ -56,7 +56,7 @@ If the child only needs one read of one small chunk, use `llm_query`, not `rlm_q
 # 1. THE SIEVE: Use Python to find "Areas of Interest"
 # Avoid passing 100k characters to an agent. Find the 5k that actually matter.
 interesting_segments = []
-search_targets = ["anomaly", "pattern", "key_event"] 
+search_targets = ["anomaly", "pattern", "key_event"]
 
 for i, segment in enumerate(data_chunks):
     if any(target in segment.lower() for target in search_targets):
