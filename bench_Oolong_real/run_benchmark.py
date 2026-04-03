@@ -4,16 +4,24 @@ import os
 from dataclasses import dataclass
 from typing import Any, cast
 
+from dotenv import load_dotenv
+
 from rlm import RLM
 from rlm.clients import get_client
 from rlm.logger.rlm_logger import RLMLogger
+from rlm.utils.dynamic_model_picker_prompt import (
+    RLM_SYSTEM_PROMPT as DYNAMIC_MODEL_PICKER_PROMPT,
+)
+from rlm.utils.subagent_confidence_selfeval_prompt import (
+    RLM_SYSTEM_PROMPT as SUBAGENT_CONFIDENCE_SELFEVAL_PROMPT,
+)
 from rlm.utils.subagent_encouraging_prompt import RLM_SYSTEM_PROMPT as SUBAGENT_ENCOURAGING_PROMPT
-from dotenv import load_dotenv
 
 load_dotenv()
 
 
-DEFAULT_DATA_PATH = "bench_Oolong_real/data/validation_single_episode.jsonl"
+DEFAULT_SINGLE_EPISODE_DATA_PATH = "bench_Oolong_real/data/validation_single_episode.jsonl"
+DEFAULT_TWO_EPISODE_DATA_PATH = "bench_Oolong_real/data/validation_two_episode.jsonl"
 
 
 @dataclass(frozen=True)
@@ -30,19 +38,28 @@ class OolongRealExample:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_path", default=DEFAULT_DATA_PATH)
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--query_index", type=int, default=None)
     parser.add_argument("--example_id", default=None)
     parser.add_argument("--campaign", default=None)
     parser.add_argument("--question_type", default=None)
     parser.add_argument(
+        "--allow_two_episodes",
+        action="store_true",
+        help="Use only 2-episode examples instead of the default 1-episode examples.",
+    )
+    parser.add_argument(
         "--model_name",
-        default=os.getenv("OOLONG_REAL_MODEL", "gpt-5-mini"),
+        default=os.getenv("OOLONG_REAL_MODEL", "gpt-5.4-mini"),
     )
     parser.add_argument(
         "--system_prompt",
-        choices=["default", "subagent_encouraging"],
+        choices=[
+            "default",
+            "subagent_encouraging",
+            "subagent_confidence_selfeval",
+            "dynamic_model_picker",
+        ],
         default="default",
     )
     parser.add_argument("--baseline", action="store_true")
@@ -79,12 +96,12 @@ def normalize_example(record: dict[str, Any]) -> OolongRealExample:
         episodes=normalize_episodes(record),
         campaign=require_str(record, "campaign"),
     )
-    if len(example.episodes) != 1:
-        raise ValueError("Expected only single-episode examples in local Oolong Real dataset")
     return example
 
 
-def load_examples_from_jsonl(data_path: str) -> list[OolongRealExample]:
+def load_examples_from_jsonl(
+    data_path: str, allowed_episode_counts: set[int]
+) -> list[OolongRealExample]:
     examples: list[OolongRealExample] = []
     with open(data_path, encoding="utf-8") as f:
         for line in f:
@@ -93,18 +110,21 @@ def load_examples_from_jsonl(data_path: str) -> list[OolongRealExample]:
             record = json.loads(line)
             if not isinstance(record, dict):
                 raise ValueError("Expected dict records in local Oolong Real JSONL")
-            examples.append(normalize_example(record))
+            example = normalize_example(record)
+            if len(example.episodes) in allowed_episode_counts:
+                examples.append(example)
     return examples
 
 
 def load_examples(
     *,
-    data_path: str,
     limit: int,
     query_index: int | None,
     example_id: str | None,
     campaign: str | None,
     question_type: str | None,
+    data_path: str,
+    allowed_episode_counts: set[int],
 ) -> list[OolongRealExample]:
     if limit <= 0:
         raise ValueError("limit must be > 0")
@@ -113,7 +133,7 @@ def load_examples(
     if query_index is not None and example_id is not None:
         raise ValueError("query_index and example_id are mutually exclusive")
 
-    all_examples = load_examples_from_jsonl(data_path)
+    all_examples = load_examples_from_jsonl(data_path, allowed_episode_counts)
     matches: list[OolongRealExample] = []
     for example in all_examples:
         if example_id is not None and example.example_id != example_id:
@@ -128,7 +148,7 @@ def load_examples(
     if query_index is not None:
         if query_index >= len(matches):
             raise ValueError(
-                f"No matching single-episode validation example found at query_index={query_index}"
+                f"No matching validation example found at query_index={query_index} for allowed episode counts {sorted(allowed_episode_counts)}"
             )
         return [matches[query_index]]
     if len(matches) >= limit:
@@ -136,7 +156,7 @@ def load_examples(
 
     if example_id is not None:
         raise ValueError(
-            f"No single-episode validation example found with example_id='{example_id}'"
+            f"No validation example found with example_id='{example_id}' for allowed episode counts {sorted(allowed_episode_counts)}"
         )
     return matches
 
@@ -192,6 +212,10 @@ def get_custom_system_prompt(system_prompt: str) -> str | None:
         return None
     if system_prompt == "subagent_encouraging":
         return SUBAGENT_ENCOURAGING_PROMPT
+    if system_prompt == "subagent_confidence_selfeval":
+        return SUBAGENT_CONFIDENCE_SELFEVAL_PROMPT
+    if system_prompt == "dynamic_model_picker":
+        return DYNAMIC_MODEL_PICKER_PROMPT
     raise ValueError(f"Unsupported system_prompt='{system_prompt}'")
 
 
@@ -207,21 +231,31 @@ def main() -> None:
     if not os.getenv("OPENAI_API_KEY2"):
         raise ValueError("OPENAI_API_KEY2 is required to run this benchmark runner.")
 
+    allowed_episode_counts = {2} if args.allow_two_episodes else {1}
+    data_path = (
+        DEFAULT_TWO_EPISODE_DATA_PATH
+        if args.allow_two_episodes
+        else DEFAULT_SINGLE_EPISODE_DATA_PATH
+    )
+
     examples = load_examples(
-        data_path=args.data_path,
+        data_path=data_path,
         limit=args.limit,
         query_index=args.query_index,
         example_id=args.example_id,
         campaign=args.campaign,
         question_type=args.question_type,
+        allowed_episode_counts=allowed_episode_counts,
     )
     if not examples:
-        raise ValueError("No matching single-episode validation examples found")
+        raise ValueError(
+            f"No matching validation examples found for allowed episode counts {sorted(allowed_episode_counts)}"
+        )
 
-    print(f"Loaded {len(examples)} Oolong Real validation examples from {args.data_path}")
+    print(f"Loaded {len(examples)} Oolong Real validation examples from {data_path}")
 
     backend_kwargs = get_backend_kwargs(args.model_name)
-    subagent_backend_kwargs = get_backend_kwargs("gpt-5-nano")
+    subagent_backend_kwargs = get_backend_kwargs("gpt-5.4-mini")
     logger: RLMLogger | None = None
     rlm: RLM | None = None
     baseline_client = None
