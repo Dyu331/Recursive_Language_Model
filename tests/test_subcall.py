@@ -441,7 +441,9 @@ class TestSubcallModelOverride:
                 parent._subcall("test prompt")
 
             assert captured_child_params.get("backend") == "openrouter"
-            assert captured_child_params.get("backend_kwargs", {}).get("model_name") == "child-model"
+            assert (
+                captured_child_params.get("backend_kwargs", {}).get("model_name") == "child-model"
+            )
 
             parent.close()
 
@@ -778,7 +780,12 @@ class TestSubcallConcurrency:
             with ThreadPoolExecutor(max_workers=4) as executor:
                 results = list(executor.map(parent._subcall, ["a", "b", "c", "d"]))
 
-        assert [result.response for result in results] == ["child a", "child b", "child c", "child d"]
+        assert [result.response for result in results] == [
+            "child a",
+            "child b",
+            "child c",
+            "child d",
+        ]
         assert parent._cumulative_cost == 1.0
 
         parent.close()

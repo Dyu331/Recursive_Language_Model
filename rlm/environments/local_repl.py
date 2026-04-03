@@ -1,5 +1,5 @@
-import copy
 import concurrent.futures
+import copy
 import io
 import json
 import os
@@ -136,7 +136,8 @@ class LocalREPL(NonIsolatedEnv):
         persistent: bool = False,
         depth: int = 1,
         subcall_fn: Callable[[str, str | None], RLMChatCompletion] | None = None,
-        reserved_subcall_fn: Callable[[str, str | None, float | None], RLMChatCompletion] | None = None,
+        reserved_subcall_fn: Callable[[str, str | None, float | None], RLMChatCompletion]
+        | None = None,
         subcall_budget_allocator: Callable[[int], float | None] | None = None,
         on_subcall_batch_start: Callable[[int, int, int], None] | None = None,
         custom_tools: dict[str, Any] | None = None,
@@ -352,7 +353,9 @@ class LocalREPL(NonIsolatedEnv):
                     index, prompt = item
                     try:
                         if self.reserved_subcall_fn is not None:
-                            completion = self.reserved_subcall_fn(prompt, model, reserved_budgets[index])
+                            completion = self.reserved_subcall_fn(
+                                prompt, model, reserved_budgets[index]
+                            )
                         else:
                             completion = self.subcall_fn(prompt, model)
                         return completion, completion.response

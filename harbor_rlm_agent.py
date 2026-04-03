@@ -26,16 +26,15 @@ from harbor.environments.base import BaseEnvironment, ExecResult
 from harbor.models.agent.context import AgentContext
 
 from rlm import (
+    RLM,
     BudgetExceededError,
     CancellationError,
     ErrorThresholdExceededError,
-    RLM,
     TimeoutExceededError,
     TokenLimitExceededError,
 )
 from rlm.environments.task_backed_repl import HarborExecRunner
 from rlm.logger import RLMLogger
-
 
 REAL_TASK_PROMPT = """\
 You are solving a benchmark task inside a real Harbor task container.
@@ -94,9 +93,7 @@ class HarborRLMAgent(BaseAgent):
 
         rlm_max_depth = int(rlm_max_depth)
         rlm_max_iterations = int(rlm_max_iterations)
-        parsed_max_timeout = (
-            float(rlm_max_timeout_sec) if rlm_max_timeout_sec is not None else None
-        )
+        parsed_max_timeout = float(rlm_max_timeout_sec) if rlm_max_timeout_sec is not None else None
         parsed_max_errors = int(rlm_max_errors) if rlm_max_errors is not None else None
 
         # Inject model_name into backend_kwargs from harbor's model_name

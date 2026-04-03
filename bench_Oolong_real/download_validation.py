@@ -5,7 +5,6 @@ from typing import Any
 
 from datasets import load_dataset
 
-
 DATASET_NAME = "oolongbench/oolong-real"
 DATASET_CONFIG = "dnd"
 DATASET_SPLIT = "validation"
@@ -58,9 +57,7 @@ def validate_record(record: dict[str, Any], allowed_episode_count: int) -> dict[
 
     episodes = normalize_episodes(record)
     if len(episodes) != allowed_episode_count:
-        raise ValueError(
-            f"Expected only {allowed_episode_count}-episode records after filtering"
-        )
+        raise ValueError(f"Expected only {allowed_episode_count}-episode records after filtering")
 
     return {
         "id": record["id"],
@@ -95,9 +92,7 @@ def main() -> None:
             episodes = normalize_episodes(record)
             if len(episodes) != allowed_episode_count:
                 continue
-            validated = validate_record(
-                {**record, "episodes": episodes}, allowed_episode_count
-            )
+            validated = validate_record({**record, "episodes": episodes}, allowed_episode_count)
             json.dump(validated, f, ensure_ascii=False)
             f.write("\n")
             written += 1
@@ -106,9 +101,7 @@ def main() -> None:
 
     os.replace(temp_output, args.output)
 
-    print(
-        f"Wrote {written} {allowed_episode_count}-episode validation examples to {args.output}"
-    )
+    print(f"Wrote {written} {allowed_episode_count}-episode validation examples to {args.output}")
 
 
 if __name__ == "__main__":

@@ -38,7 +38,7 @@ rlm = RLM(
     max_depth=1,
     max_iterations=12,
     compaction=True,
-    compaction_threshold_pct=0.04, # Keep this low to force the test
+    compaction_threshold_pct=0.04,  # Keep this low to force the test
     verbose=True,
     logger=logger,
 )

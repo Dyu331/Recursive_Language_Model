@@ -42,9 +42,7 @@ from rlm.utils.rlm_utils import filter_sensitive_keys
 from rlm.utils.token_utils import count_tokens, get_context_limit
 
 
-def _run_child_completion_entry(
-    connection: Any, child_kwargs: dict[str, Any], prompt: str
-) -> None:
+def _run_child_completion_entry(connection: Any, child_kwargs: dict[str, Any], prompt: str) -> None:
     child: RLM | None = None
     try:
         run_kwargs = child_kwargs.copy()
@@ -222,7 +220,9 @@ class RLM:
 
     def _get_default_subagent_spec(self) -> tuple[ClientBackend, dict[str, Any] | None]:
         if self.subagent_backend is not None or self.subagent_backend_kwargs is not None:
-            child_backend = self.subagent_backend if self.subagent_backend is not None else self.backend
+            child_backend = (
+                self.subagent_backend if self.subagent_backend is not None else self.backend
+            )
             if self.subagent_backend_kwargs is not None:
                 child_backend_kwargs = self.subagent_backend_kwargs.copy()
             elif self.backend_kwargs is not None:
@@ -244,7 +244,9 @@ class RLM:
         if selected_model is None and self.subagent_model_selector is not None:
             selected_model = self.subagent_model_selector(prompt, next_depth)
         if selected_model is not None:
-            child_backend_kwargs = child_backend_kwargs.copy() if child_backend_kwargs is not None else {}
+            child_backend_kwargs = (
+                child_backend_kwargs.copy() if child_backend_kwargs is not None else {}
+            )
             child_backend_kwargs["model_name"] = selected_model
         resolved_model = selected_model or (child_backend_kwargs or {}).get("model_name", "unknown")
         return child_backend, child_backend_kwargs, resolved_model
@@ -262,7 +264,9 @@ class RLM:
 
         # Create other_backend_client if provided (for depth=1 routing)
         other_backend_client: BaseLM | None = None
-        default_subagent_backend, default_subagent_backend_kwargs = self._get_default_subagent_spec()
+        default_subagent_backend, default_subagent_backend_kwargs = (
+            self._get_default_subagent_spec()
+        )
         if (
             default_subagent_backend != self.backend
             or default_subagent_backend_kwargs != self.backend_kwargs
@@ -274,7 +278,10 @@ class RLM:
 
         lm_handler = LMHandler(client, other_backend_client=other_backend_client)
 
-        if other_backend_client is not None and other_backend_client.model_name != client.model_name:
+        if (
+            other_backend_client is not None
+            and other_backend_client.model_name != client.model_name
+        ):
             lm_handler.register_client(other_backend_client.model_name, other_backend_client)
 
         # Register other clients to be available as sub-call options (by model name)

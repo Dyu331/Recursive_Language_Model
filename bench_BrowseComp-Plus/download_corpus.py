@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-from typing import Any
 
 from datasets import load_dataset
 

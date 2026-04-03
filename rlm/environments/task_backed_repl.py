@@ -4,7 +4,6 @@ import asyncio
 import base64
 import json
 import math
-import os
 import queue
 import shlex
 import textwrap
@@ -561,7 +560,9 @@ class TaskBackedREPL(NonIsolatedEnv):
             )
 
         try:
-            data = json.loads(result.stdout.strip().splitlines()[-1]) if result.stdout.strip() else {}
+            data = (
+                json.loads(result.stdout.strip().splitlines()[-1]) if result.stdout.strip() else {}
+            )
             self._locals = data.get("locals", {})
             return REPLResult(
                 stdout=data.get("stdout", ""),
