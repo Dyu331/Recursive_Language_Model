@@ -90,36 +90,28 @@ else:
 # GOOD: use rlm_query here because the child must synthesize multiple findings into one answer,
 # not merely extract a fact from one already-resolved chunk.
 
-** Final Step: **
-Before marking the task as complete, check that you have fully addressed the user's request and that your output is in the correct format.
-DON'T return the final answer without first inspecting it, because it might be incomplete, or contain errors.
-IMPORTANT: When you are done, you must return a final answer using either `FINAL(...)` or `FINAL_VAR(...)`.
+**Final Step:**
+Before marking the task as complete, you must ensure the "Final Answer" is based on observed results, not predicted ones.
 
-- Use `FINAL(answer_text)` when you want to provide the final answer directly in the model response.
-- Use `FINAL_VAR(variable_name)` only when `variable_name` is an existing variable in the REPL environment that already contains the final answer.
-- `FINAL(...)` and `FINAL_VAR(...)` are terminal actions. Do not use them for intermediate outputs, partial progress, subagent results, candidate lists, or variables that you still plan to inspect in a later iteration.
-- REPL variables already persist across iterations. If you want to keep something for later, assign it to a normal variable (for example `rlm_results = ...`) and inspect or reuse it in the next iteration without calling `FINAL_VAR`.
+The Inspection Rule: Never call FINAL or FINAL_VAR in the same iteration where you call a subagent (llm_query or rlm_query). You must wait for the REPL to return the subagent's output, inspect it in the next iteration to ensure it isn't an error or "None," and only then finalize.
+Verification: Check that you have fully addressed the user's request. If your subagent returned internal code or an incomplete snippet, do not pass it to FINAL.
+Terminal Actions: FINAL(...) and FINAL_VAR(...) are terminal. Once called, the process ends. Do not use them for intermediate outputs or variables you still intend to process.
 
-WARNING - COMMON MISTAKE:
-`FINAL_VAR(...)` looks up an existing variable name. It does NOT treat its argument as a literal answer string.
+Correct Finalization Flow:
+Iteration N: Call result = rlm_query(...).
+Iteration N+1: Receive result. Inspect it. If it’s valid, then call FINAL_VAR("result").
 
-- WRONG: `FINAL_VAR("The Dorset Culture of the Eastern Arctic")`
-- WRONG: `FINAL_VAR("my_answer")` if `my_answer` has not been created yet
-- WRONG: `FINAL_VAR("rlm_results")` when `rlm_results` is only an intermediate result you want to inspect next
-- CORRECT:
-```repl
-my_answer = "The Dorset Culture of the Eastern Arctic"
-FINAL_VAR("my_answer")
-```
+**Usage of FINAL and FINAL_VAR:**
+Use FINAL(answer_text) to provide the final answer directly as a string, which doesn't include any justification and confidence score.
+Use FINAL_VAR(variable_name) only when variable_name is an existing variable in the REPL environment that contains the verified answer.
+REPL variables persist across iterations. Assign intermediate results to variables (e.g., extracted_data = ...) and reuse them without calling FINAL_VAR.
 
-- CORRECT for intermediate state:
-```repl
-rlm_results = rlm_query_batched(prompts)
-# OR lm_results = lm_query_batched(prompts)
-print(rlm_results) #OR print(lm_results)
-```
+WARNING - COMMON MISTAKES:
+Pre-emptive Finalization: Calling FINAL(rlm_query(...)) is FORBIDDEN. You cannot finalize a promise that hasn't returned yet.
+Literal Variable Errors: FINAL_VAR(...) looks up a variable name. It does NOT treat its argument as a literal string.
+Do not use print() or any other Python logic inside a FINAL(...) or FINAL_VAR(...) call. These functions are for delivering a sanitized, human-readable string only.
 
-Plan your architecture, then execute immediately.
+Plan and Execute Step-by-Step: Identify your first search target, emit the code to find it, and STOP. Do not attempt to solve the whole puzzle in one iteration. Wait for the data to return before planning your next move.
 """
 )
 
