@@ -1,5 +1,8 @@
 """
-Deterministic multi-baseline BrowseComp-Plus benchmark: fixed query IDs, 2 trials each, JSONL output.
+Replicate BrowseComp-Plus RLM benchmark: 50 frozen query IDs, four baselines,
+per-baseline trial counts, JSONL under replicate_rlm_benchmarks/.
+
+Results directory: <baseline>/ when --max_depth 1 (default), else <baseline>_depthN/.
 """
 
 from __future__ import annotations
@@ -21,41 +24,80 @@ from rlm.logger.rlm_logger import RLMLogger
 load_dotenv()
 
 _BENCH_DIR = Path(__file__).resolve().parent
-_MULTI_ROOT = _BENCH_DIR / "multi_model_benchmarks"
+_REPLICATE_ROOT = _BENCH_DIR / "replicate_rlm_benchmarks"
 
-FROZEN_QUERY_IDS: tuple[str, ...] = ("769", "773", "781", "793", "806")
-
-BASELINES: tuple[tuple[str, str, str], ...] = (
-    ("mini-root_mini-sub", "gpt-5.4-mini", "gpt-5.4-mini"),
-    ("mini-root_nano-sub", "gpt-5.4-mini", "gpt-5.4-nano"),
-    ("flagship-root_nano-sub", "gpt-5.4", "gpt-5.4-nano"),
+# First 50 query_id values in browsecomp_plus_decrypted.jsonl file order (deterministic).
+REPLICATE_QUERY_IDS: tuple[str, ...] = (
+    "769",
+    "770",
+    "771",
+    "772",
+    "773",
+    "774",
+    "775",
+    "776",
+    "778",
+    "781",
+    "783",
+    "784",
+    "785",
+    "786",
+    "787",
+    "788",
+    "790",
+    "791",
+    "792",
+    "793",
+    "794",
+    "796",
+    "797",
+    "798",
+    "800",
+    "801",
+    "802",
+    "804",
+    "805",
+    "806",
+    "809",
+    "810",
+    "811",
+    "814",
+    "815",
+    "816",
+    "819",
+    "820",
+    "821",
+    "822",
+    "823",
+    "826",
+    "827",
+    "828",
+    "830",
+    "832",
+    "833",
+    "834",
+    "835",
+    "836",
 )
 
-DYNAMIC_SELECTION_BASELINES: tuple[tuple[str, str, str], ...] = (
-    ("dynamic_selection_mini_root", "gpt-5.4-mini", "gpt-5.4-mini"),
-    ("dynamic_selection_flagship_root", "gpt-5.4", "gpt-5.4-mini"),
+# (baseline_name, root_model, sub_model, num_trials)
+REPLICATE_BASELINES: tuple[tuple[str, str, str, int], ...] = (
+    ("flagship-root_mini-sub", "gpt-5.4", "gpt-5.4-mini", 1),
+    ("mini-root_mini-sub", "gpt-5.4-mini", "gpt-5.4-mini", 2),
+    ("flagship-root_nano-sub", "gpt-5.4", "gpt-5.4-nano", 1),
+    ("mini-root_nano-sub", "gpt-5.4-mini", "gpt-5.4-nano", 1),
 )
 
-_ALL_BASELINE_NAMES: list[str] = [b[0] for b in BASELINES] + [
-    b[0] for b in DYNAMIC_SELECTION_BASELINES
-]
-
-_PROMPT_TO_BASELINES: dict[str, tuple[tuple[str, str, str], ...]] = {
-    "default": BASELINES,
-    "subagent_encouraging": BASELINES,
-    "subagent_confidence_selfeval": BASELINES,
-    "dynamic_model_picker": DYNAMIC_SELECTION_BASELINES,
-    "parallel_subagent": BASELINES,
-}
+_REPLICATE_BASELINE_NAMES: tuple[str, ...] = tuple(b[0] for b in REPLICATE_BASELINES)
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Multi-model BrowseComp-Plus benchmark runner")
+    p = argparse.ArgumentParser(description="Replicate RLM BrowseComp-Plus benchmark runner")
     p.add_argument(
         "--baseline",
         default=None,
-        choices=_ALL_BASELINE_NAMES,
-        help="Run only this baseline (default: all active for the chosen --system_prompt)",
+        choices=_REPLICATE_BASELINE_NAMES,
+        help="Run only this baseline (default: all four)",
     )
     p.add_argument(
         "--resume",
@@ -66,8 +108,8 @@ def parse_args() -> argparse.Namespace:
         "--timestamped",
         action="store_true",
         help=(
-            "Write to a new results_YYYYMMDD_HHMMSS.jsonl and point latest.jsonl at it; "
-            "default overwrites multi_model_benchmarks/<baseline>/results.jsonl"
+            "Write to results_YYYYMMDD_HHMMSS.jsonl and point latest.jsonl at it; "
+            "default overwrites replicate_rlm_benchmarks/<baseline>[_depthN]/results.jsonl"
         ),
     )
     p.add_argument(
@@ -79,6 +121,12 @@ def parse_args() -> argparse.Namespace:
         default=str(_BENCH_DIR / "corpus.jsonl"),
     )
     p.add_argument("--num_docs", type=int, default=1000)
+    p.add_argument(
+        "--max_depth",
+        type=int,
+        default=1,
+        help="RLM max_depth (default: 1). When >1, results go under <baseline>_depth<N>/",
+    )
     p.add_argument(
         "--system_prompt",
         choices=[
@@ -93,10 +141,18 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def load_frozen_query_records(decrypted_path: str) -> list[dict[str, Any]]:
+def baseline_results_dir_name(baseline_name: str, max_depth: int) -> str:
+    if max_depth <= 0:
+        raise ValueError("max_depth must be >= 1")
+    if max_depth == 1:
+        return baseline_name
+    return f"{baseline_name}_depth{max_depth}"
+
+
+def load_replicate_query_records(decrypted_path: str) -> list[dict[str, Any]]:
     return [
         bc.load_query_record(decrypted_path, query_index=0, query_id=qid)
-        for qid in FROZEN_QUERY_IDS
+        for qid in REPLICATE_QUERY_IDS
     ]
 
 
@@ -114,16 +170,14 @@ def load_completed_keys(jsonl_path: Path) -> set[tuple[str, str, int]]:
     return done
 
 
-def results_dir(system_prompt: str, baseline_name: str) -> Path:
-    if system_prompt == "subagent_confidence_selfeval":
-        return _MULTI_ROOT / f"confidence_selfeval_{baseline_name}"
-    return _MULTI_ROOT / baseline_name
+def results_dir(baseline_name: str, max_depth: int) -> Path:
+    return _REPLICATE_ROOT / baseline_results_dir_name(baseline_name, max_depth)
 
 
 def resolve_output_file(
-    system_prompt: str, baseline_name: str, *, resume: bool, timestamped: bool
+    baseline_name: str, max_depth: int, *, resume: bool, timestamped: bool
 ) -> Path:
-    base_dir = results_dir(system_prompt, baseline_name)
+    base_dir = results_dir(baseline_name, max_depth)
     base_dir.mkdir(parents=True, exist_ok=True)
     if not timestamped:
         return base_dir / "results.jsonl"
@@ -152,8 +206,8 @@ def make_subcall_counter() -> tuple[dict[str, int], Callable[[int, str, str], No
     return counts, on_subcall_start
 
 
-def symlink_latest(system_prompt: str, baseline_name: str, results_file: Path) -> None:
-    base_dir = results_dir(system_prompt, baseline_name)
+def symlink_latest(baseline_name: str, max_depth: int, results_file: Path) -> None:
+    base_dir = results_dir(baseline_name, max_depth)
     latest = base_dir / "latest.jsonl"
     rel = os.path.relpath(results_file.resolve(), base_dir.resolve())
     if latest.is_symlink() or latest.exists():
@@ -202,26 +256,24 @@ def main() -> None:
     args = parse_args()
     if not os.getenv("OPENAI_API_KEY2"):
         raise ValueError("OPENAI_API_KEY2 is required to run this benchmark runner.")
+    if args.max_depth < 1:
+        raise ValueError("--max_depth must be >= 1")
 
     bc.ensure_decrypted_dataset(args.decrypted_path)
-    query_records = load_frozen_query_records(args.decrypted_path)
+    query_records = load_replicate_query_records(args.decrypted_path)
 
-    active_suite = _PROMPT_TO_BASELINES[args.system_prompt]
-    active_names = [b[0] for b in active_suite]
-    print(f"system_prompt: {args.system_prompt} → baselines: {active_names}")
+    baselines = [b for b in REPLICATE_BASELINES if args.baseline is None or b[0] == args.baseline]
+    print(
+        f"replicate_rlm_benchmark: max_depth={args.max_depth}, "
+        f"{len(REPLICATE_QUERY_IDS)} queries, baselines: {[b[0] for b in baselines]}"
+    )
 
-    if args.baseline is not None and args.baseline not in active_names:
-        valid = ", ".join(active_names)
-        raise ValueError(
-            f"--baseline '{args.baseline}' is not valid when --system_prompt is "
-            f"'{args.system_prompt}'. Valid choices: {valid}"
-        )
-
-    baselines = [b for b in active_suite if args.baseline is None or b[0] == args.baseline]
-
-    for baseline_name, root_model, sub_model in baselines:
+    for baseline_name, root_model, sub_model, num_trials in baselines:
         results_path = resolve_output_file(
-            args.system_prompt, baseline_name, resume=args.resume, timestamped=args.timestamped
+            baseline_name,
+            args.max_depth,
+            resume=args.resume,
+            timestamped=args.timestamped,
         )
         completed = load_completed_keys(results_path) if args.resume else set()
         results_path.parent.mkdir(parents=True, exist_ok=True)
@@ -237,7 +289,7 @@ def main() -> None:
             backend_kwargs=backend_kwargs,
             subagent_backend_kwargs=sub_backend_kwargs,
             environment="local",
-            max_depth=2,
+            max_depth=args.max_depth,
             compaction=True,
             verbose=True,
             logger=logger,
@@ -262,7 +314,7 @@ def main() -> None:
                     )
                     context_payload = bc.build_context_payload(query_record, corpus_docs)
 
-                    for trial in (1, 2):
+                    for trial in range(1, num_trials + 1):
                         key = (task_id, baseline_name, trial)
                         if key in completed:
                             print(f"skip {baseline_name} task={task_id} trial={trial}")
@@ -290,7 +342,7 @@ def main() -> None:
         finally:
             rlm.close()
 
-        symlink_latest(args.system_prompt, baseline_name, results_path)
+        symlink_latest(baseline_name, args.max_depth, results_path)
         print(f"wrote {results_path}")
 
 

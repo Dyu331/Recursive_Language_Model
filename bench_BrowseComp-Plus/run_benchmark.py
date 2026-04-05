@@ -13,6 +13,9 @@ from rlm.logger.rlm_logger import RLMLogger
 from rlm.utils.dynamic_model_picker_prompt import (
     RLM_SYSTEM_PROMPT as DYNAMIC_MODEL_PICKER_PROMPT,
 )
+from rlm.utils.parallel_subagent_prompt import (
+    RLM_SYSTEM_PROMPT as PARALLEL_SUBAGENT_PROMPT,
+)
 from rlm.utils.subagent_confidence_selfeval_prompt import (
     RLM_SYSTEM_PROMPT as SUBAGENT_CONFIDENCE_SELFEVAL_PROMPT,
 )
@@ -57,6 +60,7 @@ def parse_args() -> argparse.Namespace:
             "subagent_encouraging",
             "subagent_confidence_selfeval",
             "dynamic_model_picker",
+            "parallel_subagent",
         ],
         default="default",
     )
@@ -343,6 +347,8 @@ def get_custom_system_prompt(system_prompt: str) -> str | None:
         return SUBAGENT_CONFIDENCE_SELFEVAL_PROMPT
     if system_prompt == "dynamic_model_picker":
         return DYNAMIC_MODEL_PICKER_PROMPT
+    if system_prompt == "parallel_subagent":
+        return PARALLEL_SUBAGENT_PROMPT
     raise ValueError(f"Unsupported system_prompt='{system_prompt}'")
 
 

@@ -791,51 +791,11 @@ class TestSubcallConcurrency:
         parent.close()
 
 
-class TestSubcallBudgetReservation:
-    """Tests for parent-side budget reservation and settlement."""
+class TestIterationBudgetCheck:
+    """Tests for per-iteration budget enforcement."""
 
-    def test_budget_reservation_splits_evenly_across_remaining_slots(self):
-        """Reservations should divide remaining budget across the remaining sibling slots."""
-        parent = RLM(
-            backend="openai",
-            backend_kwargs={"model_name": "parent-model"},
-            max_depth=3,
-            max_budget=0.9,
-        )
-
-        first = parent._reserve_subcall_budget(3)
-        second = parent._reserve_subcall_budget(2)
-        third = parent._reserve_subcall_budget(1)
-
-        assert first == pytest.approx(0.3)
-        assert second == pytest.approx(0.3)
-        assert third == pytest.approx(0.3)
-        assert parent._reserved_cost == pytest.approx(0.9)
-
-        parent.close()
-
-    def test_budget_settlement_releases_reservation_and_tracks_actual_spend(self):
-        """Settling a subcall should release reserved budget and keep only actual child spend."""
-        parent = RLM(
-            backend="openai",
-            backend_kwargs={"model_name": "parent-model"},
-            max_depth=3,
-            max_budget=1.0,
-        )
-
-        parent._own_cost = 0.1
-        parent._cumulative_cost = 0.1
-        reserved = parent._reserve_subcall_budget(2)
-        parent._settle_subcall_budget(reserved, 0.2, next_depth=1)
-
-        assert parent._reserved_cost == pytest.approx(0.0)
-        assert parent._child_cost == pytest.approx(0.2)
-        assert parent._cumulative_cost == pytest.approx(0.3)
-
-        parent.close()
-
-    def test_iteration_budget_check_combines_root_and_child_cost(self):
-        """Iteration budget checks should include child spend instead of overwriting it."""
+    def test_iteration_budget_check_overwrites_cumulative_cost_from_handler(self):
+        """Iteration budget check should set cumulative cost from handler's reported cost."""
         from rlm.core.types import RLMIteration
 
         parent = RLM(
@@ -843,7 +803,6 @@ class TestSubcallBudgetReservation:
             backend_kwargs={"model_name": "parent-model"},
             max_budget=1.0,
         )
-        parent._child_cost = 0.4
 
         mock_handler = Mock()
         mock_handler.get_usage_summary.return_value = UsageSummary(
@@ -860,8 +819,6 @@ class TestSubcallBudgetReservation:
         iteration = RLMIteration(prompt="test", response="code", code_blocks=[])
         parent._check_iteration_limits(iteration, 0, mock_handler)
 
-        assert parent._own_cost == pytest.approx(0.3)
-        assert parent._child_cost == pytest.approx(0.4)
-        assert parent._cumulative_cost == pytest.approx(0.7)
+        assert parent._cumulative_cost == pytest.approx(0.3)
 
         parent.close()

@@ -1,4 +1,3 @@
-import concurrent.futures
 import copy
 import io
 import json
@@ -10,6 +9,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from typing import Any
 
@@ -125,9 +125,6 @@ class LocalREPL(NonIsolatedEnv):
     Executes code in a sandboxed namespace with access to context data.
     """
 
-    _cwd_lock = threading.RLock()
-    _stable_cwd = os.getcwd()
-
     def __init__(
         self,
         lm_handler_address: tuple[str, int] | None = None,
@@ -136,22 +133,22 @@ class LocalREPL(NonIsolatedEnv):
         persistent: bool = False,
         depth: int = 1,
         subcall_fn: Callable[[str, str | None], RLMChatCompletion] | None = None,
-        reserved_subcall_fn: Callable[[str, str | None, float | None], RLMChatCompletion]
-        | None = None,
-        subcall_budget_allocator: Callable[[int], float | None] | None = None,
-        on_subcall_batch_start: Callable[[int, int, int], None] | None = None,
         custom_tools: dict[str, Any] | None = None,
         custom_sub_tools: dict[str, Any] | None = None,
         compaction: bool = False,
+        max_concurrent_subcalls: int = 4,
         **kwargs,
     ):
-        super().__init__(persistent=persistent, depth=depth, **kwargs)
+        super().__init__(
+            persistent=persistent,
+            depth=depth,
+            max_concurrent_subcalls=max_concurrent_subcalls,
+            **kwargs,
+        )
 
         self.lm_handler_address = lm_handler_address
         self.subcall_fn = subcall_fn  # Callback for recursive RLM calls (depth > 1 support)
-        self.reserved_subcall_fn = reserved_subcall_fn
-        self.subcall_budget_allocator = subcall_budget_allocator
-        self.on_subcall_batch_start = on_subcall_batch_start
+        self.original_cwd = os.getcwd()
         self.temp_dir = tempfile.mkdtemp(prefix=f"repl_env_{uuid.uuid4()}_")
         self._lock = threading.Lock()
         self._context_count: int = 0
@@ -326,9 +323,13 @@ class LocalREPL(NonIsolatedEnv):
         return self._llm_query(prompt, model)
 
     def _rlm_query_batched(self, prompts: list[str], model: str | None = None) -> list[str]:
-        """Spawn recursive RLM sub-calls for multiple prompts.
+        """Spawn recursive RLM sub-calls for multiple prompts in parallel.
 
-        Each prompt gets its own child RLM for deeper thinking.
+        Each prompt gets its own child RLM for deeper thinking. When multiple
+        prompts are provided, subcalls run concurrently using a thread pool
+        (bounded by max_concurrent_subcalls) since they are independent and
+        I/O-bound. Results are returned in the same order as input prompts.
+
         Falls back to llm_query_batched if no recursive capability is configured.
 
         Args:
@@ -339,46 +340,47 @@ class LocalREPL(NonIsolatedEnv):
             List of responses in the same order as input prompts.
         """
         if self.subcall_fn is not None:
-            if self.depth == 1 and len(prompts) > 1:
-                max_workers = min(len(prompts), 4)
-                if self.on_subcall_batch_start is not None:
-                    self.on_subcall_batch_start(self.depth + 1, len(prompts), max_workers)
-                reserved_budgets = [None] * len(prompts)
-                if self.subcall_budget_allocator is not None:
-                    for index in range(len(prompts)):
-                        remaining_slots = len(prompts) - index
-                        reserved_budgets[index] = self.subcall_budget_allocator(remaining_slots)
-
-                def run_one(item: tuple[int, str]) -> tuple[RLMChatCompletion | None, str]:
-                    index, prompt = item
+            # For 0 or 1 prompts, no need for thread pool overhead
+            if len(prompts) <= 1:
+                results = []
+                for prompt in prompts:
                     try:
-                        if self.reserved_subcall_fn is not None:
-                            completion = self.reserved_subcall_fn(
-                                prompt, model, reserved_budgets[index]
-                            )
-                        else:
-                            completion = self.subcall_fn(prompt, model)
-                        return completion, completion.response
-                    except Exception as e:
-                        return None, f"Error: RLM query failed - {e}"
-
-                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    batch_results = list(executor.map(run_one, enumerate(prompts)))
-
-                for completion, _ in batch_results:
-                    if completion is not None:
+                        completion = self.subcall_fn(prompt, model)
                         self._pending_llm_calls.append(completion)
+                        results.append(completion.response)
+                    except Exception as e:
+                        results.append(f"Error: RLM query failed - {e}")
+                return results
 
-                return [response for _, response in batch_results]
+            # Parallel execution for multiple prompts
+            max_workers = min(self.max_concurrent_subcalls, len(prompts))
+            # Pre-allocate result slots to preserve ordering
+            results: list[str] = [""] * len(prompts)
+            completions: list[tuple[int, RLMChatCompletion]] = []
+            lock = threading.Lock()
 
-            results = []
-            for prompt in prompts:
+            def _run_subcall(index: int, prompt: str) -> None:
                 try:
                     completion = self.subcall_fn(prompt, model)
-                    self._pending_llm_calls.append(completion)
-                    results.append(completion.response)
+                    with lock:
+                        completions.append((index, completion))
+                    results[index] = completion.response
                 except Exception as e:
-                    results.append(f"Error: RLM query failed - {e}")
+                    results[index] = f"Error: RLM query failed - {e}"
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(_run_subcall, i, prompt) for i, prompt in enumerate(prompts)
+                ]
+                # Wait for all futures to complete; exceptions are captured inside _run_subcall
+                for future in as_completed(futures):
+                    future.result()  # Re-raises unexpected executor errors
+
+            # Append completions in original prompt order for deterministic metadata
+            completions.sort(key=lambda x: x[0])
+            for _, completion in completions:
+                self._pending_llm_calls.append(completion)
+
             return results
 
         # Fall back to plain batched LM call if no recursive capability
@@ -492,14 +494,12 @@ class LocalREPL(NonIsolatedEnv):
     @contextmanager
     def _temp_cwd(self):
         """Temporarily change to temp directory for execution."""
-        with self._cwd_lock:
-            old_cwd = os.getcwd()
-            try:
-                os.chdir(self.temp_dir)
-                yield
-            finally:
-                restore_cwd = old_cwd if os.path.isdir(old_cwd) else self._stable_cwd
-                os.chdir(restore_cwd)
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(self.temp_dir)
+            yield
+        finally:
+            os.chdir(old_cwd)
 
     def _restore_scaffold(self) -> None:
         """Restore scaffold names after execution so overwrites (e.g. context = 'x') don't persist."""
@@ -570,17 +570,10 @@ class LocalREPL(NonIsolatedEnv):
 
     def cleanup(self):
         """Clean up temp directory and reset state."""
-        with self._cwd_lock:
-            try:
-                current_cwd = os.getcwd()
-            except FileNotFoundError:
-                current_cwd = None
-            try:
-                if current_cwd == self.temp_dir:
-                    os.chdir(self._stable_cwd)
-                shutil.rmtree(self.temp_dir)
-            except Exception:
-                pass
+        try:
+            shutil.rmtree(self.temp_dir)
+        except Exception:
+            pass
         if hasattr(self, "globals"):
             self.globals.clear()
         if hasattr(self, "locals"):
