@@ -1,0 +1,1 @@
+{'result': 'success', 'tests_ok': True, 'mismatches': [], 'repo_path': '/app/repo', 'branches': '* branch1\n  branch2\n'}

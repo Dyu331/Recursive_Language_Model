@@ -1,0 +1,13 @@
+/app
+
+== /app ==
+total 36
+drwxr-xr-x 1 root root  4096 Oct 31 02:51 .
+drwxr-xr-x 1 root root  4096 Apr  2 22:56 ..
+-rw-r--r-- 1 root root  8192 Oct 24 05:18 main.db
+-rw-r--r-- 1 root root 16512 Oct 24 05:18 main.db-wal
+
+== /app/repo ==
+ls: cannot access '/app/repo': No such file or directory
+
+[EXIT CODE] 2

@@ -1,0 +1,117 @@
+{
+    "id": "b0c9ec99-257d-457d-b0ee-cdabf7973f9c",
+    "task_name": "git-leak-recovery",
+    "trial_name": "git-leak-recovery__xAqZbnJ",
+    "trial_uri": "file:///home/subc/rlm/jobs/2026-04-03__11-52-01/git-leak-recovery__xAqZbnJ",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "git-leak-recovery"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "6e313b191485295fc042ddfdc4d1184dc9588de1fa57f7513685fec67a7d7d9d",
+    "config": {
+        "task": {
+            "path": "git-leak-recovery",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "git-leak-recovery__xAqZbnJ",
+        "trials_dir": "jobs/2026-04-03__11-52-01",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "installed_rlm_agent:InstalledRLMAgent",
+            "model_name": null,
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {
+                "backend": "openai",
+                "backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "sub_backend": "openai",
+                "sub_backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "rlm_max_depth": 2,
+                "rlm_max_iterations": 30,
+                "rlm_max_timeout_sec": 3600,
+                "rlm_log_dir": "./gpt5mini_encourage/git-leak-recovery",
+                "rlm_prompt_profile": "encourage_subagent"
+            },
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "c3a7a6af-ab42-4922-94c0-370e6a80cb94"
+    },
+    "agent_info": {
+        "name": "installed-rlm-agent",
+        "version": "1.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": 155980,
+        "n_cache_tokens": null,
+        "n_output_tokens": 18779,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "agent": "installed-rlm-agent",
+            "execution_path": "task-backed-repl",
+            "environment": "task",
+            "root_model": "gpt-5-mini",
+            "execution_time_sec": 278.36401156300053,
+            "final_response_preview": "STEP 0: BACKUP\ncp -a /app/repo /app/repo.backup  # make a full filesystem backup copy of the repo directory\ngit clone --mirror /app/repo /tmp/repo.git  # create a bare mirror clone (safe workspace for history rewrite)\n\nSTEP 1: LOCATE AND RECOVER THE SECRET (writes only the secret + trailing newline to /app/secret.txt)\ncd /app/repo  # operate from the repo working directory\nMATCH=$(git rev-list --all | xargs -n1 git grep -n --no-color \"secret[\" 2>/dev/null | sed -n '1p')  # search every commit for the first occurrence of literal \"secret[\"\n# If MATCH is empty that means no match was found; the later commands will handle that case.\necho \"$MATCH\"  # show the matching entry (format: <commit>:<path>:<lineno>:<line>)\nCOMMIT=$(printf '%s' \"$MATCH\" | cut -d: -f1)  # extract the commit id from the match\nFILE=$(printf '%s' \"$MATCH\" | cut -d: -f2)  # extract the file path from the match\ngit show \"$COMMIT\":\"$FILE\" | grep -o 'secret\\[[^]]*\\]' | head -n1 > /app/secret.txt  # extract the first secret["
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-03T03:52:01.750393Z",
+    "finished_at": "2026-04-03T03:57:27.709169Z",
+    "environment_setup": {
+        "started_at": "2026-04-03T03:52:01.755241Z",
+        "finished_at": "2026-04-03T03:52:08.351693Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-03T03:52:08.351731Z",
+        "finished_at": "2026-04-03T03:52:08.351786Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-03T03:52:08.351827Z",
+        "finished_at": "2026-04-03T03:57:01.481707Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-03T03:57:01.481839Z",
+        "finished_at": "2026-04-03T03:57:16.036658Z"
+    }
+}

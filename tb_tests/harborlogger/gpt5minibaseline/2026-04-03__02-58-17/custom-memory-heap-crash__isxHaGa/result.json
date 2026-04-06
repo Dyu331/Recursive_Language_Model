@@ -1,0 +1,116 @@
+{
+    "id": "98e0b2dd-1722-4d5f-abd7-c68ca0d587f2",
+    "task_name": "custom-memory-heap-crash",
+    "trial_name": "custom-memory-heap-crash__isxHaGa",
+    "trial_uri": "file:///home/subc/rlm/jobs/2026-04-03__02-58-17/custom-memory-heap-crash__isxHaGa",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "custom-memory-heap-crash"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "fba0e3be977223b1f8c182da8411663258f83b3563dd5dcd12beae87762ccabf",
+    "config": {
+        "task": {
+            "path": "custom-memory-heap-crash",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "custom-memory-heap-crash__isxHaGa",
+        "trials_dir": "jobs/2026-04-03__02-58-17",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "installed_rlm_agent:InstalledRLMAgent",
+            "model_name": null,
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {
+                "backend": "openai",
+                "backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "sub_backend": "openai",
+                "sub_backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "rlm_max_depth": 2,
+                "rlm_max_iterations": 30,
+                "rlm_max_timeout_sec": 1800,
+                "rlm_log_dir": "./gpt5minibaseline/custom-memory-heap-crash"
+            },
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "cea132c2-028a-45fd-a06a-6883fe94390e"
+    },
+    "agent_info": {
+        "name": "installed-rlm-agent",
+        "version": "1.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": 49229,
+        "n_cache_tokens": null,
+        "n_output_tokens": 17678,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "agent": "installed-rlm-agent",
+            "execution_path": "task-backed-repl",
+            "environment": "task",
+            "root_model": "gpt-5-mini",
+            "execution_time_sec": 263.48398522800017,
+            "final_response_preview": "Fixed: updated /app/user.cpp to eagerly initialize libstdc++ internals before the program installs its custom heap. Change summary: added eager initialization in user_init() to touch iostreams, locales, do some std::string/std::vector allocations, and perform a throw/catch to force exception-handling pools to allocate early. This prevents libstdc++ from allocating into the custom heap (which is freed during Application shutdown) and avoids use-after-free / aborts in RELEASE. Only /app/user.cpp was modified. Logs saved to /tmp/fix_attempt2.txt."
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-02T18:58:18.034632Z",
+    "finished_at": "2026-04-02T19:05:12.313257Z",
+    "environment_setup": {
+        "started_at": "2026-04-02T18:58:18.035726Z",
+        "finished_at": "2026-04-02T18:59:45.569560Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-02T18:59:45.569596Z",
+        "finished_at": "2026-04-02T18:59:45.569642Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-02T18:59:45.569681Z",
+        "finished_at": "2026-04-02T19:04:11.259152Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-02T19:04:11.259293Z",
+        "finished_at": "2026-04-02T19:04:56.604104Z"
+    }
+}

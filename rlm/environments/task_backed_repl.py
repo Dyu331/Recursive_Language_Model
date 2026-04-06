@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import concurrent.futures
 import json
 import math
+import os
 import queue
 import shlex
 import textwrap
@@ -12,7 +14,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 from rlm.core.comms_utils import LMRequest, send_lm_request, send_lm_request_batched
 from rlm.core.types import REPLResult, RLMChatCompletion
@@ -42,6 +44,10 @@ class LLMProxyHandler(BaseHTTPRequestHandler):
     pending_calls: list[RLMChatCompletion] = []
     lock: threading.Lock = threading.Lock()
     depth: int = 1
+    subcall_fn: Callable[[str, str | None], RLMChatCompletion] | None = None
+    reserved_subcall_fn: Callable[[str, str | None, float | None], RLMChatCompletion] | None = None
+    subcall_budget_allocator: Callable[[int], float | None] | None = None
+    on_subcall_batch_start: Callable[[int, int, int], None] | None = None
 
     def log_message(self, *args):
         pass
@@ -53,6 +59,10 @@ class LLMProxyHandler(BaseHTTPRequestHandler):
             result = self._handle_single(body)
         elif self.path == "/llm_query_batched":
             result = self._handle_batched(body)
+        elif self.path == "/rlm_query":
+            result = self._handle_recursive_single(body)
+        elif self.path == "/rlm_query_batched":
+            result = self._handle_recursive_batched(body)
         else:
             self._respond(404, {"error": "Not found"})
             return
@@ -107,12 +117,90 @@ class LLMProxyHandler(BaseHTTPRequestHandler):
 
         return {"responses": results}
 
+    def _handle_recursive_single(self, body: dict[str, Any]) -> dict[str, Any]:
+        prompt = str(body.get("prompt", ""))
+        model = body.get("model")
+        model_name = str(model) if model is not None else None
+
+        if self.subcall_fn is not None:
+            try:
+                completion = self.subcall_fn(prompt, model_name)
+                with self.lock:
+                    self.pending_calls.append(completion)
+                return {"response": completion.response}
+            except Exception as exc:  # noqa: BLE001
+                return {"response": f"Error: RLM query failed - {exc}"}
+
+        return self._handle_single(body)
+
+    def _handle_recursive_batched(self, body: dict[str, Any]) -> dict[str, Any]:
+        prompts_raw = body.get("prompts", [])
+        if not isinstance(prompts_raw, list):
+            return {"responses": []}
+
+        prompts = [str(item) for item in prompts_raw]
+        model = body.get("model")
+        model_name = str(model) if model is not None else None
+
+        if self.subcall_fn is None:
+            return self._handle_batched({"prompts": prompts, "model": model_name})
+
+        if self.depth == 1 and len(prompts) > 1:
+            max_workers = min(len(prompts), 4)
+            if self.on_subcall_batch_start is not None:
+                self.on_subcall_batch_start(self.depth + 1, len(prompts), max_workers)
+
+            reserved_budgets: list[float | None] = [None] * len(prompts)
+            if self.subcall_budget_allocator is not None:
+                for index in range(len(prompts)):
+                    remaining_slots = len(prompts) - index
+                    reserved_budgets[index] = self.subcall_budget_allocator(remaining_slots)
+
+            def run_one(item: tuple[int, str]) -> tuple[RLMChatCompletion | None, str]:
+                index, prompt = item
+                try:
+                    if self.reserved_subcall_fn is not None:
+                        completion = self.reserved_subcall_fn(
+                            prompt,
+                            model_name,
+                            reserved_budgets[index],
+                        )
+                    else:
+                        completion = self.subcall_fn(prompt, model_name)
+                    return completion, completion.response
+                except Exception as exc:  # noqa: BLE001
+                    return None, f"Error: RLM query failed - {exc}"
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                batch_results = list(executor.map(run_one, enumerate(prompts)))
+
+            with self.lock:
+                for completion, _ in batch_results:
+                    if completion is not None:
+                        self.pending_calls.append(completion)
+            return {"responses": [response for _, response in batch_results]}
+
+        results: list[str] = []
+        completions: list[RLMChatCompletion] = []
+        for prompt in prompts:
+            try:
+                completion = self.subcall_fn(prompt, model_name)
+                completions.append(completion)
+                results.append(completion.response)
+            except Exception as exc:  # noqa: BLE001
+                results.append(f"Error: RLM query failed - {exc}")
+
+        with self.lock:
+            self.pending_calls.extend(completions)
+        return {"responses": results}
+
 
 def _build_exec_script(
     code: str,
     workspace_dir: str,
     proxy_host: str,
     proxy_port: int,
+    http_timeout_sec: float | None = None,
     depth: int = 1,
 ) -> str:
     code_b64 = base64.b64encode(code.encode()).decode()
@@ -137,6 +225,7 @@ WORKSPACE = {workspace_dir!r}
 STATE = os.path.join(WORKSPACE, "state.pkl")
 PROXY = "http://{proxy_host}:{proxy_port}"
 CODE_B64 = {code_b64!r}
+REQUEST_TIMEOUT = {http_timeout_sec!r}
 
 os.makedirs(WORKSPACE, exist_ok=True)
 
@@ -147,7 +236,11 @@ def _post_json(path, payload):
         data=data,
         headers={{"Content-Type": "application/json"}},
     )
-    with urllib.request.urlopen(request, timeout=300) as response:
+    if REQUEST_TIMEOUT is None:
+        response = urllib.request.urlopen(request)
+    else:
+        response = urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT)
+    with response:
         return json.loads(response.read().decode())
 
 def llm_query(prompt, model=None):
@@ -161,6 +254,26 @@ def llm_query_batched(prompts, model=None):
     try:
         data = _post_json(
             "/llm_query_batched",
+            {{"prompts": prompts, "model": model, "depth": {depth}}},
+        )
+        responses = data.get("responses")
+        if responses is None:
+            return [f"Error: {{data.get('error')}}"] * len(prompts)
+        return responses
+    except Exception as exc:
+        return [f"Error: {{exc}}"] * len(prompts)
+
+def rlm_query(prompt, model=None):
+    try:
+        data = _post_json("/rlm_query", {{"prompt": prompt, "model": model, "depth": {depth}}})
+        return data.get("response") or f"Error: {{data.get('error')}}"
+    except Exception as exc:
+        return f"Error: {{exc}}"
+
+def rlm_query_batched(prompts, model=None):
+    try:
+        data = _post_json(
+            "/rlm_query_batched",
             {{"prompts": prompts, "model": model, "depth": {depth}}},
         )
         responses = data.get("responses")
@@ -224,6 +337,8 @@ _globals = {{
     "__name__": "__main__",
     "llm_query": llm_query,
     "llm_query_batched": llm_query_batched,
+    "rlm_query": rlm_query,
+    "rlm_query_batched": rlm_query_batched,
     "FINAL_VAR": FINAL_VAR,
     "SHOW_VARS": SHOW_VARS,
 }}
@@ -284,7 +399,7 @@ class HarborExecRunner:
     ) -> ShellCommandResult:
         timeout = None if timeout_sec is None else max(1, math.ceil(timeout_sec))
         result = self._run_coroutine(
-            self._environment.exec(
+            lambda: self._environment.exec(
                 command=command,
                 cwd=cwd,
                 env=env,
@@ -298,12 +413,12 @@ class HarborExecRunner:
         )
 
     @staticmethod
-    def _run_coroutine(coroutine: Any) -> Any:
+    def _run_coroutine(coroutine_factory: Callable[[], Awaitable[Any]]) -> Any:
         result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
 
         def _worker():
             try:
-                result_queue.put((True, asyncio.run(coroutine)))
+                result_queue.put((True, asyncio.run(coroutine_factory())))
             except BaseException as exc:  # noqa: BLE001
                 result_queue.put((False, exc))
 
@@ -336,8 +451,14 @@ class TmuxShellRunner:
             env=env,
             marker=marker,
         )
-        timeout = 300.0 if timeout_sec is None else float(timeout_sec)
-        self._session.send_keys([wrapped, "Enter"], block=True, max_timeout_sec=timeout)
+        if timeout_sec is None:
+            self._session.send_keys([wrapped, "Enter"], block=True)
+        else:
+            self._session.send_keys(
+                [wrapped, "Enter"],
+                block=True,
+                max_timeout_sec=float(timeout_sec),
+            )
         pane = self._session.capture_pane(capture_entire=self._capture_entire)
         return self._extract_result(pane, marker)
 
@@ -423,9 +544,16 @@ class TaskBackedREPL(NonIsolatedEnv):
         setup_code: str | None = None,
         persistent: bool = False,
         depth: int = 1,
+        subcall_fn: Callable[[str, str | None], RLMChatCompletion] | None = None,
+        reserved_subcall_fn: Callable[[str, str | None, float | None], RLMChatCompletion] | None = None,
+        subcall_budget_allocator: Callable[[int], float | None] | None = None,
+        on_subcall_batch_start: Callable[[int, int, int], None] | None = None,
         workdir: str = "/app",
         workspace_root: str = "/tmp/rlm_task_repl",
         proxy_host: str = "host.docker.internal",
+        proxy_bind_host: str = "0.0.0.0",
+        exec_timeout_sec: float | None = None,
+        http_timeout_sec: float | None = None,
         **kwargs,
     ):
         if persistent:
@@ -440,6 +568,13 @@ class TaskBackedREPL(NonIsolatedEnv):
         self.workspace_root = workspace_root.rstrip("/") or "/tmp/rlm_task_repl"
         self.remote_workspace = f"{self.workspace_root}/{uuid.uuid4().hex}"
         self.proxy_host = proxy_host
+        self.proxy_bind_host = proxy_bind_host
+        self.exec_timeout_sec = exec_timeout_sec
+        self.http_timeout_sec = http_timeout_sec
+        self.subcall_fn = subcall_fn
+        self.reserved_subcall_fn = reserved_subcall_fn
+        self.subcall_budget_allocator = subcall_budget_allocator
+        self.on_subcall_batch_start = on_subcall_batch_start
 
         self.proxy_server: HTTPServer | None = None
         self.proxy_thread: threading.Thread | None = None
@@ -464,9 +599,13 @@ class TaskBackedREPL(NonIsolatedEnv):
                 "pending_calls": self.pending_calls,
                 "lock": self._calls_lock,
                 "depth": self.depth,
+                "subcall_fn": self.subcall_fn,
+                "reserved_subcall_fn": self.reserved_subcall_fn,
+                "subcall_budget_allocator": self.subcall_budget_allocator,
+                "on_subcall_batch_start": self.on_subcall_batch_start,
             },
         )
-        self.proxy_server = HTTPServer(("127.0.0.1", 0), handler)
+        self.proxy_server = HTTPServer((self.proxy_bind_host, 0), handler)
         self.proxy_port = self.proxy_server.server_address[1]
         self.proxy_thread = threading.Thread(target=self.proxy_server.serve_forever, daemon=True)
         self.proxy_thread.start()
@@ -538,12 +677,13 @@ class TaskBackedREPL(NonIsolatedEnv):
             workspace_dir=self.remote_workspace,
             proxy_host=self.proxy_host,
             proxy_port=self.proxy_port,
+            http_timeout_sec=self.http_timeout_sec,
             depth=self.depth,
         )
         result = self.runner.run(
             _build_python_command(script),
             cwd=self.workdir,
-            timeout_sec=300,
+            timeout_sec=self.exec_timeout_sec,
         )
 
         with self._calls_lock:
@@ -560,9 +700,7 @@ class TaskBackedREPL(NonIsolatedEnv):
             )
 
         try:
-            data = (
-                json.loads(result.stdout.strip().splitlines()[-1]) if result.stdout.strip() else {}
-            )
+            data = json.loads(result.stdout.strip().splitlines()[-1]) if result.stdout.strip() else {}
             self._locals = data.get("locals", {})
             return REPLResult(
                 stdout=data.get("stdout", ""),

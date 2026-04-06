@@ -1,0 +1,116 @@
+{
+    "id": "43958cc4-818b-4192-96f4-71d11d081c5a",
+    "task_name": "db-wal-recovery",
+    "trial_name": "db-wal-recovery__KQ5jfeb",
+    "trial_uri": "file:///home/subc/rlm/jobs/2026-04-03__06-56-30/db-wal-recovery__KQ5jfeb",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "db-wal-recovery"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "01f470c86f3a1f7ce4d91bdf0aaaa89fa96a4124ac48617990e2735b5291913a",
+    "config": {
+        "task": {
+            "path": "db-wal-recovery",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "db-wal-recovery__KQ5jfeb",
+        "trials_dir": "jobs/2026-04-03__06-56-30",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "installed_rlm_agent:InstalledRLMAgent",
+            "model_name": null,
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {
+                "backend": "openai",
+                "backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "sub_backend": "openai",
+                "sub_backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "rlm_max_depth": 2,
+                "rlm_max_iterations": 30,
+                "rlm_max_timeout_sec": 3600,
+                "rlm_log_dir": "./gpt5mini_encourage/db-wal-recovery"
+            },
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "9c3b6357-cf98-498a-acd1-fb8a33c72ae7"
+    },
+    "agent_info": {
+        "name": "installed-rlm-agent",
+        "version": "1.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": 78169,
+        "n_cache_tokens": null,
+        "n_output_tokens": 14604,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "agent": "installed-rlm-agent",
+            "execution_path": "task-backed-repl",
+            "environment": "task",
+            "root_model": "gpt-5-mini",
+            "execution_time_sec": 225.02847431900045,
+            "final_response_preview": "/app/recovered.json"
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-02T22:56:30.594201Z",
+    "finished_at": "2026-04-02T23:01:02.753157Z",
+    "environment_setup": {
+        "started_at": "2026-04-02T22:56:30.597348Z",
+        "finished_at": "2026-04-02T22:56:45.095946Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-02T22:56:45.096118Z",
+        "finished_at": "2026-04-02T22:56:45.096338Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-02T22:56:45.096572Z",
+        "finished_at": "2026-04-02T23:00:32.263562Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-02T23:00:32.263894Z",
+        "finished_at": "2026-04-02T23:00:50.653649Z"
+    }
+}

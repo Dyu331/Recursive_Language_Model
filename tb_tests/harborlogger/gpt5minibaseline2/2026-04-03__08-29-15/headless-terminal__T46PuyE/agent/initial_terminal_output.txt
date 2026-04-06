@@ -1,0 +1,12 @@
+/app
+
+== /app ==
+total 12
+drwxr-xr-x 1 root root 4096 Oct 28 21:57 .
+drwxr-xr-x 1 root root 4096 Apr  3 00:29 ..
+-rw-r--r-- 1 root root  401 Oct 27 19:59 base_terminal.py
+
+== /app/repo ==
+ls: cannot access '/app/repo': No such file or directory
+
+[EXIT CODE] 2

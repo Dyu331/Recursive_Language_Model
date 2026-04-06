@@ -1,0 +1,22 @@
+SUCCESS: HeadlessTerminal implemented at /app/headless_terminal.py and basic interactive tests passed.
+
+Captured output for inspection:
+
+--- OUT1 (echo) ---
+bash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+root@79dd55da969d:/app# echo __HEADLESS_TEST__
+__HEADLESS_TEST__
+root@79dd55da969d:/app# 
+--- OUT2 (read) ---
+read -p "ASK:" ans
+ASK:myanswer
+root@79dd55da969d:/app# 
+--- OUT3 (cat) ---
+cat
+hello_from_cat
+hello_from_cat
+root@79dd55da969d:/app# 
+--- OUT4 (sleep+ctrl-c) ---
+sleep 2
+^C

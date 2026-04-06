@@ -1,0 +1,117 @@
+{
+    "id": "b6ef2b48-f0c8-456c-9ed5-19b53602fa59",
+    "task_name": "db-wal-recovery",
+    "trial_name": "db-wal-recovery__upkoxDf",
+    "trial_uri": "file:///home/subc/rlm/jobs/2026-04-03__10-53-47/db-wal-recovery__upkoxDf",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "db-wal-recovery"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "01f470c86f3a1f7ce4d91bdf0aaaa89fa96a4124ac48617990e2735b5291913a",
+    "config": {
+        "task": {
+            "path": "db-wal-recovery",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "db-wal-recovery__upkoxDf",
+        "trials_dir": "jobs/2026-04-03__10-53-47",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "installed_rlm_agent:InstalledRLMAgent",
+            "model_name": null,
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {
+                "backend": "openai",
+                "backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "sub_backend": "openai",
+                "sub_backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "rlm_max_depth": 2,
+                "rlm_max_iterations": 30,
+                "rlm_max_timeout_sec": 3600,
+                "rlm_log_dir": "./gpt5mini_encourage/db-wal-recovery",
+                "rlm_prompt_profile": "encourage_subagent"
+            },
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "250d5312-2af7-4b5e-bcf2-34485c8f1021"
+    },
+    "agent_info": {
+        "name": "installed-rlm-agent",
+        "version": "1.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": 941603,
+        "n_cache_tokens": null,
+        "n_output_tokens": 64951,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "agent": "installed-rlm-agent",
+            "execution_path": "task-backed-repl",
+            "environment": "task",
+            "root_model": "gpt-5-mini",
+            "execution_time_sec": 938.2953855619999,
+            "final_response_preview": "FINAL(\n\"I could not recover the WAL changes: after attempting many decoding strategies and parsing the decoded candidate WAL blobs, I was only able to extract the 5 rows that are already present in the main DB. I wrote /app/recovered.json containing the recovered rows (the original 5). Contents of /app/recovered.json:\\n\\n[{\\\"id\\\": 1, \\\"name\\\": \\\"apple\\\", \\\"value\\\": 100}, {\\\"id\\\": 2, \\\"name\\\": \\\"banana\\\", \\\"value\\\": 200}, {\\\"id\\\": 3, \\\"name\\\": \\\"cherry\\\", \\\"value\\\": 300}, {\\\"id\\\": 4, \\\"name\\\": \\\"date\\\", \\\"value\\\": 400}, {\\\"id\\\": 5, \\\"name\\\": \\\"elderberry\\\", \\\"value\\\": 500}]\\n\\nWhat I tried (summary):\\n- Inspected /app/main.db and the provided main.db-wal hex head snapshot.\\n- Tried single-byte XOR and short repeating-key XOR decodings of the WAL head and wrote multiple decoded candidates.\\n- Attempted to checkpoint/apply decoded WAL candidates to main.db and examined results (none restored additional rows).\\n- Parsed the two DB pages directly (table b-tree page parsing / SQLite varints "
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-03T02:53:47.771501Z",
+    "finished_at": "2026-04-03T03:10:40.006325Z",
+    "environment_setup": {
+        "started_at": "2026-04-03T02:53:47.776989Z",
+        "finished_at": "2026-04-03T02:53:59.960036Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-03T02:53:59.960113Z",
+        "finished_at": "2026-04-03T02:53:59.960386Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-03T02:53:59.960498Z",
+        "finished_at": "2026-04-03T03:10:08.099293Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-03T03:10:08.099511Z",
+        "finished_at": "2026-04-03T03:10:28.149385Z"
+    }
+}

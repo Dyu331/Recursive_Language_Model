@@ -1,0 +1,29 @@
+{
+    "id": "c3a7a6af-ab42-4922-94c0-370e6a80cb94",
+    "started_at": "2026-04-03T11:52:01.717649",
+    "finished_at": "2026-04-03T11:57:27.713821",
+    "n_total_trials": 1,
+    "stats": {
+        "n_trials": 1,
+        "n_errors": 0,
+        "evals": {
+            "installed-rlm-agent__terminal-bench": {
+                "n_trials": 1,
+                "n_errors": 0,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "reward_stats": {
+                    "reward": {
+                        "0.0": [
+                            "git-leak-recovery__xAqZbnJ"
+                        ]
+                    }
+                },
+                "exception_stats": {}
+            }
+        }
+    }
+}

@@ -1,0 +1,13 @@
+/app
+
+== /app ==
+total 87056
+drwxr-xr-x 1 root root     4096 Sep 13  2025 .
+drwxr-xr-x 1 root root     4096 Apr  2 23:16 ..
+-rw-r--r-- 1 root root 38066688 Sep 13  2025 expected.csv
+-rw-r--r-- 1 root root 51066691 Sep 13  2025 input.csv
+
+== /app/repo ==
+ls: cannot access '/app/repo': No such file or directory
+
+[EXIT CODE] 2

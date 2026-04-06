@@ -1,0 +1,14 @@
+/app
+
+== /app ==
+total 12
+drwxr-xr-x 1 root root 4096 Oct 28 22:02 .
+drwxr-xr-x 1 root root 4096 Apr  3 03:52 ..
+drwxr-xr-x 3 root root 4096 Oct 28 22:02 repo
+
+== /app/repo ==
+total 16
+drwxr-xr-x 3 root root 4096 Oct 28 22:02 .
+drwxr-xr-x 1 root root 4096 Oct 28 22:02 ..
+drwxr-xr-x 8 root root 4096 Oct 28 22:02 .git
+-rw-r--r-- 1 root root   26 Oct 28 22:02 README.md

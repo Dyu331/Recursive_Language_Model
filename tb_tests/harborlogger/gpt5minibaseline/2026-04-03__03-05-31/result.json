@@ -1,0 +1,29 @@
+{
+    "id": "aaf07498-1172-4d7c-be2e-5e0068a76a39",
+    "started_at": "2026-04-03T03:05:31.755140",
+    "finished_at": "2026-04-03T03:07:19.616757",
+    "n_total_trials": 1,
+    "stats": {
+        "n_trials": 1,
+        "n_errors": 0,
+        "evals": {
+            "installed-rlm-agent__terminal-bench": {
+                "n_trials": 1,
+                "n_errors": 0,
+                "metrics": [
+                    {
+                        "mean": 1.0
+                    }
+                ],
+                "reward_stats": {
+                    "reward": {
+                        "1.0": [
+                            "db-wal-recovery__dEDc5Co"
+                        ]
+                    }
+                },
+                "exception_stats": {}
+            }
+        }
+    }
+}

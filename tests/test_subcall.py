@@ -192,6 +192,71 @@ class TestSubcallTokensPropagation:
             parent.close()
 
 
+class TestSubcallIterationsPropagation:
+    """Tests for separate subagent iteration limits."""
+
+    def test_child_inherits_parent_iterations_by_default(self):
+        """Without override, child should receive the parent's max_iterations."""
+        captured_child_params = {}
+
+        original_rlm_class = rlm_module.RLM
+
+        class CapturingRLM(original_rlm_class):
+            def __init__(self, *args, **kwargs):
+                captured_child_params.update(kwargs)
+                super().__init__(*args, **kwargs)
+
+        with patch.object(rlm_module, "get_client") as mock_get_client:
+            mock_lm = create_mock_lm(["FINAL(answer)"])
+            mock_get_client.return_value = mock_lm
+
+            parent = RLM(
+                backend="openai",
+                backend_kwargs={"model_name": "parent-model"},
+                max_depth=3,
+                max_iterations=7,
+            )
+
+            with patch.object(rlm_module, "RLM", CapturingRLM):
+                parent._subcall("test prompt")
+
+            assert captured_child_params.get("max_iterations") == 7
+            assert captured_child_params.get("subagent_max_iterations") == 7
+
+            parent.close()
+
+    def test_child_respects_subagent_iteration_override(self):
+        """When subagent_max_iterations is set, child should use that value."""
+        captured_child_params = {}
+
+        original_rlm_class = rlm_module.RLM
+
+        class CapturingRLM(original_rlm_class):
+            def __init__(self, *args, **kwargs):
+                captured_child_params.update(kwargs)
+                super().__init__(*args, **kwargs)
+
+        with patch.object(rlm_module, "get_client") as mock_get_client:
+            mock_lm = create_mock_lm(["FINAL(answer)"])
+            mock_get_client.return_value = mock_lm
+
+            parent = RLM(
+                backend="openai",
+                backend_kwargs={"model_name": "parent-model"},
+                max_depth=3,
+                max_iterations=7,
+                subagent_max_iterations=1,
+            )
+
+            with patch.object(rlm_module, "RLM", CapturingRLM):
+                parent._subcall("test prompt")
+
+            assert captured_child_params.get("max_iterations") == 1
+            assert captured_child_params.get("subagent_max_iterations") == 1
+
+            parent.close()
+
+
 class TestSubcallErrorsPropagation:
     """Tests for max_errors propagation to child RLM."""
 
@@ -441,9 +506,7 @@ class TestSubcallModelOverride:
                 parent._subcall("test prompt")
 
             assert captured_child_params.get("backend") == "openrouter"
-            assert (
-                captured_child_params.get("backend_kwargs", {}).get("model_name") == "child-model"
-            )
+            assert captured_child_params.get("backend_kwargs", {}).get("model_name") == "child-model"
 
             parent.close()
 
@@ -780,22 +843,57 @@ class TestSubcallConcurrency:
             with ThreadPoolExecutor(max_workers=4) as executor:
                 results = list(executor.map(parent._subcall, ["a", "b", "c", "d"]))
 
-        assert [result.response for result in results] == [
-            "child a",
-            "child b",
-            "child c",
-            "child d",
-        ]
+        assert [result.response for result in results] == ["child a", "child b", "child c", "child d"]
         assert parent._cumulative_cost == 1.0
 
         parent.close()
 
 
-class TestIterationBudgetCheck:
-    """Tests for per-iteration budget enforcement."""
+class TestSubcallBudgetReservation:
+    """Tests for parent-side budget reservation and settlement."""
 
-    def test_iteration_budget_check_overwrites_cumulative_cost_from_handler(self):
-        """Iteration budget check should set cumulative cost from handler's reported cost."""
+    def test_budget_reservation_splits_evenly_across_remaining_slots(self):
+        """Reservations should divide remaining budget across the remaining sibling slots."""
+        parent = RLM(
+            backend="openai",
+            backend_kwargs={"model_name": "parent-model"},
+            max_depth=3,
+            max_budget=0.9,
+        )
+
+        first = parent._reserve_subcall_budget(3)
+        second = parent._reserve_subcall_budget(2)
+        third = parent._reserve_subcall_budget(1)
+
+        assert first == pytest.approx(0.3)
+        assert second == pytest.approx(0.3)
+        assert third == pytest.approx(0.3)
+        assert parent._reserved_cost == pytest.approx(0.9)
+
+        parent.close()
+
+    def test_budget_settlement_releases_reservation_and_tracks_actual_spend(self):
+        """Settling a subcall should release reserved budget and keep only actual child spend."""
+        parent = RLM(
+            backend="openai",
+            backend_kwargs={"model_name": "parent-model"},
+            max_depth=3,
+            max_budget=1.0,
+        )
+
+        parent._own_cost = 0.1
+        parent._cumulative_cost = 0.1
+        reserved = parent._reserve_subcall_budget(2)
+        parent._settle_subcall_budget(reserved, 0.2, next_depth=1)
+
+        assert parent._reserved_cost == pytest.approx(0.0)
+        assert parent._child_cost == pytest.approx(0.2)
+        assert parent._cumulative_cost == pytest.approx(0.3)
+
+        parent.close()
+
+    def test_iteration_budget_check_combines_root_and_child_cost(self):
+        """Iteration budget checks should include child spend instead of overwriting it."""
         from rlm.core.types import RLMIteration
 
         parent = RLM(
@@ -803,6 +901,7 @@ class TestIterationBudgetCheck:
             backend_kwargs={"model_name": "parent-model"},
             max_budget=1.0,
         )
+        parent._child_cost = 0.4
 
         mock_handler = Mock()
         mock_handler.get_usage_summary.return_value = UsageSummary(
@@ -819,6 +918,8 @@ class TestIterationBudgetCheck:
         iteration = RLMIteration(prompt="test", response="code", code_blocks=[])
         parent._check_iteration_limits(iteration, 0, mock_handler)
 
-        assert parent._cumulative_cost == pytest.approx(0.3)
+        assert parent._own_cost == pytest.approx(0.3)
+        assert parent._child_cost == pytest.approx(0.4)
+        assert parent._cumulative_cost == pytest.approx(0.7)
 
         parent.close()

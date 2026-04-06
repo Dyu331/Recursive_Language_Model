@@ -31,12 +31,12 @@ __all__ = [
 
 
 def get_environment(
-    environment: Literal["local", "modal", "docker", "daytona", "prime", "e2b"],
+    environment: Literal["local", "modal", "docker", "daytona", "prime", "e2b", "task"],
     environment_kwargs: dict[str, Any],
 ) -> BaseEnv:
     """
     Routes a specific environment and the args (as a dict) to the appropriate environment if supported.
-    Currently supported environments: ['local', 'modal', 'docker', 'daytona', 'prime', 'e2b']
+    Currently supported environments: ['local', 'modal', 'docker', 'daytona', 'prime', 'e2b', 'task']
     """
     if environment == "local":
         return LocalREPL(**environment_kwargs)
@@ -60,7 +60,11 @@ def get_environment(
         from rlm.environments.e2b_repl import E2BREPL
 
         return E2BREPL(**environment_kwargs)
+    elif environment == "task":
+        from rlm.environments.task_backed_repl import TaskBackedREPL
+
+        return TaskBackedREPL(**environment_kwargs)
     else:
         raise ValueError(
-            f"Unknown environment: {environment}. Supported: ['local', 'modal', 'docker', 'daytona', 'prime', 'e2b']"
+            f"Unknown environment: {environment}. Supported: ['local', 'modal', 'docker', 'daytona', 'prime', 'e2b', 'task']"
         )

@@ -1,0 +1,116 @@
+{
+    "id": "d7cdaf18-3e12-4ddf-be57-0fe1f7ad0727",
+    "task_name": "git-leak-recovery",
+    "trial_name": "git-leak-recovery__tzHsCSA",
+    "trial_uri": "file:///home/subc/rlm/jobs/2026-04-03__08-34-20/git-leak-recovery__tzHsCSA",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "git-leak-recovery"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "6e313b191485295fc042ddfdc4d1184dc9588de1fa57f7513685fec67a7d7d9d",
+    "config": {
+        "task": {
+            "path": "git-leak-recovery",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "git-leak-recovery__tzHsCSA",
+        "trials_dir": "jobs/2026-04-03__08-34-20",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "installed_rlm_agent:InstalledRLMAgent",
+            "model_name": null,
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {
+                "backend": "openai",
+                "backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "sub_backend": "openai",
+                "sub_backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "rlm_max_depth": 2,
+                "rlm_max_iterations": 30,
+                "rlm_max_timeout_sec": 3600,
+                "rlm_log_dir": "./gpt5mini_encourage/git-leak-recovery"
+            },
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "96620993-d77c-457d-88ed-27db8f4579b3"
+    },
+    "agent_info": {
+        "name": "installed-rlm-agent",
+        "version": "1.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": 20085,
+        "n_cache_tokens": null,
+        "n_output_tokens": 6676,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "agent": "installed-rlm-agent",
+            "execution_path": "task-backed-repl",
+            "environment": "task",
+            "root_model": "gpt-5-mini",
+            "execution_time_sec": 134.4317390260003,
+            "final_response_preview": "Recovered secret: secret[lost_and_found_in_git]\nSaved to: /app/secret.txt\nFound location (before cleanup): object:52d18a091cd9755bacb8eaccab2882a24b080dc7\nCleanup performed: git reflog expire --expire=now --all; git gc --prune=now --aggressive\n\nVerification:\nNo occurrences found after cleanup."
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-03T00:34:20.940899Z",
+    "finished_at": "2026-04-03T00:37:26.838590Z",
+    "environment_setup": {
+        "started_at": "2026-04-03T00:34:20.946418Z",
+        "finished_at": "2026-04-03T00:34:28.469931Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-03T00:34:28.470049Z",
+        "finished_at": "2026-04-03T00:34:28.470241Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-03T00:34:28.470522Z",
+        "finished_at": "2026-04-03T00:37:00.810393Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-03T00:37:00.810570Z",
+        "finished_at": "2026-04-03T00:37:15.153183Z"
+    }
+}

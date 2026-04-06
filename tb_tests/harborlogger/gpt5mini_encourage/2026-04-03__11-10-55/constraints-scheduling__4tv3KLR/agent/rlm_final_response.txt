@@ -1,0 +1,6 @@
+{
+  "start": "20240117T110000Z",
+  "end": "20240117T120000Z",
+  "ics": "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Example Corp//Team Scheduler//EN\r\nBEGIN:VEVENT\r\nUID:d50eeb26-7fe4-4d68-8161-375ab9c00d80@example.com\r\nDTSTAMP:20240101T000000Z\r\nDTSTART:20240117T110000Z\r\nDTEND:20240117T120000Z\r\nSUMMARY:Team Planning Meeting\r\nATTENDEE;CN=Alice:mailto:alice@example.com\r\nATTENDEE;CN=Bob:mailto:bob@example.com\r\nATTENDEE;CN=Carol:mailto:carol@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+  "path": "/app/meeting_scheduled.ics"
+}

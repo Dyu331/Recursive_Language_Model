@@ -1,0 +1,13 @@
+/app
+
+== /app ==
+total 16
+drwxr-xr-x 1 root root 4096 Oct 31 02:53 .
+drwxr-xr-x 1 root root 4096 Apr  3 03:42 ..
+-rw-r--r-- 1 root root  960 Oct 24 05:18 filter.py
+-rw-r--r-- 1 root root 3270 Oct 24 05:18 test_outputs.py
+
+== /app/repo ==
+ls: cannot access '/app/repo': No such file or directory
+
+[EXIT CODE] 2

@@ -1,0 +1,1 @@
+{'repo': '/app/repo', 'algo_path': '/app/repo/algo.py', 'tests_ok': True, 'examples_checked': 3, 'note': 'git not available in environment; created /app/repo and wrote algo.py implementing inferred map. Cannot create git branches without git.'}

@@ -1,0 +1,71 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 5,
+            "passed": 3,
+            "failed": 2,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1775187569.926718,
+            "stop": 1775187570.061013
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_git_repo_init",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0009348340026917867,
+                "start": 1775187570.0315242,
+                "stop": 1775187570.0484715,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_git_repo_init():\n        \"\"\"Test that git bundles were pulled and merged\"\"\"\n        git_path = Path(\"/app/repo/.git\")\n>       assert git_path.exists(), \"Git repository does not exist in /app/repo\"\nE       AssertionError: Git repository does not exist in /app/repo\nE       assert False\nE        +  where False = exists()\nE        +    where exists = PosixPath('/app/repo/.git').exists\n\n/tests/test_outputs.py:13: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_both_bundles_fetched",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0039306329999817535,
+                "start": 1775187570.048792,
+                "stop": 1775187570.055972,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_both_bundles_fetched():\n        \"\"\"Test that both bundles were actually fetched and merged\"\"\"\n        import subprocess\n    \n        # Check if branches from both bundles exist in the repository\n        result = subprocess.run(\n            [\"git\", \"branch\", \"-a\"], cwd=\"/app/repo\", capture_output=True, text=True\n        )\n>       assert result.returncode == 0, \"Git branch command failed\"\nE       AssertionError: Git branch command failed\nE       assert 128 == 0\nE        +  where 128 = CompletedProcess(args=['git', 'branch', '-a'], returncode=128, stdout='', stderr='fatal: not a git repository (or any of the parent directories): .git\\n').returncode\n\n/tests/test_outputs.py:24: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_algo_py_exists",
+                "status": "passed",
+                "duration": 0.0005258700039121322,
+                "start": 1775187570.056327,
+                "stop": 1775187570.0571399,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_algo_py_has_map_function",
+                "status": "passed",
+                "duration": 0.0016815790004329756,
+                "start": 1775187570.0573707,
+                "stop": 1775187570.0592883,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_algo_map_function_with_test_input",
+                "status": "passed",
+                "duration": 0.0009867689987004269,
+                "start": 1775187570.0595443,
+                "stop": 1775187570.0607526,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

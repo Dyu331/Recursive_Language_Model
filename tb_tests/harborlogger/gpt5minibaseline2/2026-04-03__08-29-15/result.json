@@ -1,0 +1,29 @@
+{
+    "id": "66d2f756-4095-4d5e-980e-97f092f990ba",
+    "started_at": "2026-04-03T08:29:16.379671",
+    "finished_at": "2026-04-03T08:31:44.460552",
+    "n_total_trials": 1,
+    "stats": {
+        "n_trials": 1,
+        "n_errors": 0,
+        "evals": {
+            "installed-rlm-agent__terminal-bench": {
+                "n_trials": 1,
+                "n_errors": 0,
+                "metrics": [
+                    {
+                        "mean": 1.0
+                    }
+                ],
+                "reward_stats": {
+                    "reward": {
+                        "1.0": [
+                            "headless-terminal__T46PuyE"
+                        ]
+                    }
+                },
+                "exception_stats": {}
+            }
+        }
+    }
+}

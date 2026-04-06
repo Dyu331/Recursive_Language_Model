@@ -5,10 +5,10 @@ import sys
 from dotenv import load_dotenv
 
 from rlm import RLM
-from rlm.logger import RLMLogger
 from rlm.utils.subagent_encouraging_prompt import (
     RLM_SYSTEM_PROMPT as SUBAGENT_ENCOURAGING_SYSTEM_PROMPT,
 )
+from rlm.logger import RLMLogger
 
 load_dotenv()
 
@@ -37,7 +37,9 @@ def extract_subcalls(result) -> list[dict]:
 def get_prompt_mode() -> str:
     prompt_mode = os.getenv("RLM_PROMPT_MODE", PROMPT_MODE_RECURSIVE).strip().lower()
     if prompt_mode not in {PROMPT_MODE_DEFAULT, PROMPT_MODE_RECURSIVE}:
-        raise ValueError("RLM_PROMPT_MODE must be 'default' or 'recursive'")
+        raise ValueError(
+            "RLM_PROMPT_MODE must be 'default' or 'recursive'"
+        )
     return prompt_mode
 
 
@@ -96,7 +98,9 @@ def main() -> None:
 
     print_separator("=")
     print("  Recursive Category Counts Example")
-    print(f"  Model: {model}  |  max_depth=2  |  max_iterations=15  |  prompt_mode={prompt_mode}")
+    print(
+        f"  Model: {model}  |  max_depth=2  |  max_iterations=15  |  prompt_mode={prompt_mode}"
+    )
     print_separator("=")
     print()
 
@@ -149,9 +153,7 @@ def main() -> None:
             rlm_subcalls += 1
         call_type = "RLM" if is_recursive else "LLM"
         preview = str(subcall.get("response", ""))[:120]
-        print(
-            f"{index}. {call_type} sub-call | model={subcall.get('root_model', '?')} | response={preview}"
-        )
+        print(f"{index}. {call_type} sub-call | model={subcall.get('root_model', '?')} | response={preview}")
     print(f"Recursive sub-calls with metadata: {rlm_subcalls}")
     print()
 

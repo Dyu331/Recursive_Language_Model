@@ -1,0 +1,1 @@
+Saved distribution to /app/dist.npy. vocab_size=150000, sum=1, min_p=3.016e-10, max_p=6.233e-01, KL_forward=10.000000000000, KL_backward=10.000000000000

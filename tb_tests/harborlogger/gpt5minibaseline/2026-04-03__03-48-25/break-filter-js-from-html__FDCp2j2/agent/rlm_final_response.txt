@@ -1,0 +1,13 @@
+Created /app/out.html with a meta-refresh to a data URL that contains a script:
+<!doctype html>
+<html>
+  <head>
+    <meta http-equiv="refresh" content="0;url=data:text/html,<script>alert('XSS')</script>">
+    <title>XSS bypass test</title>
+  </head>
+  <body>
+    <p>If you see this, meta refresh didn't work.</p>
+  </body>
+</html>
+
+After running /app/filter.py (which HTML-escaped the script in the meta content) and /app/test_outputs.py, the alert still triggered and the test passed.

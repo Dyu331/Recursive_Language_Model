@@ -1,0 +1,50 @@
+Traceback (most recent call last):
+  File "/home/subc/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/trial/trial.py", line 483, in run
+    await self._execute_agent()
+  File "/home/subc/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/trial/trial.py", line 259, in _execute_agent
+    await asyncio.wait_for(
+    ...<6 lines>...
+    )
+  File "/home/subc/.local/share/uv/python/cpython-3.13.12-linux-x86_64-gnu/lib/python3.13/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/home/subc/rlm/installed_rlm_agent.py", line 171, in run
+    completion = self.rlm.completion(prompt, root_prompt=instruction)
+  File "/home/subc/rlm/rlm/core/rlm.py", line 417, in completion
+    iteration: RLMIteration = self._completion_turn(
+                              ~~~~~~~~~~~~~~~~~~~~~^
+        prompt=current_prompt,
+        ^^^^^^^^^^^^^^^^^^^^^^
+        lm_handler=lm_handler,
+        ^^^^^^^^^^^^^^^^^^^^^^
+        environment=environment,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/subc/rlm/rlm/core/rlm.py", line 670, in _completion_turn
+    response = lm_handler.completion(prompt)
+  File "/home/subc/rlm/rlm/core/lm_handler.py", line 209, in completion
+    return self.get_client(model).completion(prompt)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/home/subc/rlm/rlm/clients/openai.py", line 85, in completion
+    response = self.client.chat.completions.create(
+        model=model, messages=messages, extra_body=extra_body
+    )
+  File "/home/subc/.local/share/uv/tools/harbor/lib/python3.13/site-packages/openai/_utils/_utils.py", line 286, in wrapper
+    return func(*args, **kwargs)
+  File "/home/subc/.local/share/uv/tools/harbor/lib/python3.13/site-packages/openai/resources/chat/completions/completions.py", line 1211, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<47 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/subc/.local/share/uv/tools/harbor/lib/python3.13/site-packages/openai/_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/subc/.local/share/uv/tools/harbor/lib/python3.13/site-packages/openai/_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': "We could not parse the JSON body of your request. (HINT: This likely means you aren't using your HTTP library correctly. The OpenAI API expects a JSON payload, but what was sent was not valid JSON. If you have trouble figuring out how to fix this, please contact us through our help center at help.openai.com.)", 'type': 'invalid_request_error', 'param': None, 'code': None}}

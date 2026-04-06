@@ -1,0 +1,14 @@
+/app
+
+== /app ==
+total 24
+drwxr-xr-x 1 root root 4096 Oct 24 05:18 .
+drwxr-xr-x 1 root root 4096 Apr  2 19:20 ..
+-rw-r--r-- 1 root root 1009 Oct 24 05:18 bundle1.bundle
+-rw-r--r-- 1 root root 1244 Oct 24 05:18 bundle2.bundle
+-rw-r--r-- 1 root root 6977 Oct 24 05:18 examples.json
+
+== /app/repo ==
+ls: cannot access '/app/repo': No such file or directory
+
+[EXIT CODE] 2

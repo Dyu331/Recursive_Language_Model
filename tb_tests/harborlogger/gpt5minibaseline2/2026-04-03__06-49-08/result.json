@@ -1,0 +1,29 @@
+{
+    "id": "0df5de98-0ee6-441a-b1d9-bb7b55210702",
+    "started_at": "2026-04-03T06:49:08.906756",
+    "finished_at": "2026-04-03T06:56:14.782327",
+    "n_total_trials": 1,
+    "stats": {
+        "n_trials": 1,
+        "n_errors": 0,
+        "evals": {
+            "installed-rlm-agent__terminal-bench": {
+                "n_trials": 1,
+                "n_errors": 0,
+                "metrics": [
+                    {
+                        "mean": 1.0
+                    }
+                ],
+                "reward_stats": {
+                    "reward": {
+                        "1.0": [
+                            "custom-memory-heap-crash__NfReHR7"
+                        ]
+                    }
+                },
+                "exception_stats": {}
+            }
+        }
+    }
+}

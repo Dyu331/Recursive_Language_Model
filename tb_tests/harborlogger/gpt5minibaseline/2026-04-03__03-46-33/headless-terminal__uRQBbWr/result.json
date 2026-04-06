@@ -1,0 +1,116 @@
+{
+    "id": "7943c4c7-3390-4149-88f7-83b715d20ed8",
+    "task_name": "headless-terminal",
+    "trial_name": "headless-terminal__uRQBbWr",
+    "trial_uri": "file:///home/subc/rlm/jobs/2026-04-03__03-46-33/headless-terminal__uRQBbWr",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "headless-terminal"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "0f08b1ccc560ac08b8420b4a493a3b4c5354e2ace9f0cbe63a44e861e46c780d",
+    "config": {
+        "task": {
+            "path": "headless-terminal",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "headless-terminal__uRQBbWr",
+        "trials_dir": "jobs/2026-04-03__03-46-33",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "installed_rlm_agent:InstalledRLMAgent",
+            "model_name": null,
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {
+                "backend": "openai",
+                "backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "sub_backend": "openai",
+                "sub_backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "rlm_max_depth": 2,
+                "rlm_max_iterations": 30,
+                "rlm_max_timeout_sec": 1800,
+                "rlm_log_dir": "./gpt5minibaseline/headless-terminal"
+            },
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "0113a670-2644-42a2-81be-5ae40c82cd08"
+    },
+    "agent_info": {
+        "name": "installed-rlm-agent",
+        "version": "1.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": 17083,
+        "n_cache_tokens": null,
+        "n_output_tokens": 2892,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "agent": "installed-rlm-agent",
+            "execution_path": "task-backed-repl",
+            "environment": "task",
+            "root_model": "gpt-5-mini",
+            "execution_time_sec": 44.72273347800001,
+            "final_response_preview": "/app/headless_terminal.py implemented (class HeadlessTerminal)"
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-02T19:46:33.799428Z",
+    "finished_at": "2026-04-02T19:48:05.689349Z",
+    "environment_setup": {
+        "started_at": "2026-04-02T19:46:33.804429Z",
+        "finished_at": "2026-04-02T19:46:37.722060Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-02T19:46:37.722090Z",
+        "finished_at": "2026-04-02T19:46:37.722129Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-02T19:46:37.722159Z",
+        "finished_at": "2026-04-02T19:47:24.713670Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-02T19:47:24.713818Z",
+        "finished_at": "2026-04-02T19:47:53.928464Z"
+    }
+}

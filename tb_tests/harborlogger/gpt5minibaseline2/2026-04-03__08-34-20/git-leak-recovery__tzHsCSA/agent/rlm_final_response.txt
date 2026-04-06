@@ -1,0 +1,7 @@
+Recovered secret: secret[lost_and_found_in_git]
+Saved to: /app/secret.txt
+Found location (before cleanup): object:52d18a091cd9755bacb8eaccab2882a24b080dc7
+Cleanup performed: git reflog expire --expire=now --all; git gc --prune=now --aggressive
+
+Verification:
+No occurrences found after cleanup.

@@ -222,6 +222,4 @@ bench_BrowseComp-Plus/corpus.jsonl
 bench_Oolong_real/data/
 bench_Oolong_real/log/
 bench_Oolong_real/logs/
-
-# oringal code for reference only
-OG_rlm
+*.jsonl

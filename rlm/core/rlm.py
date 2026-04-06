@@ -1,3 +1,6 @@
+import multiprocessing as mp
+import pickle
+import threading
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -29,15 +32,30 @@ from rlm.utils.parsing import (
     find_final_answer,
     format_iteration,
 )
-from rlm.utils.prompts import (
-    RLM_SYSTEM_PROMPT,
-    QueryMetadata,
-    build_rlm_system_prompt,
-    build_user_prompt,
-)
+from rlm.utils.prompt_profiles import resolve_prompt_profile
+from rlm.utils.prompts import QueryMetadata
 from rlm.utils.rlm_utils import filter_sensitive_keys
 from rlm.utils.token_utils import count_tokens, get_context_limit
 
+
+def _run_child_completion_entry(
+    connection: Any, child_kwargs: dict[str, Any], prompt: str
+) -> None:
+    child: RLM | None = None
+    try:
+        run_kwargs = child_kwargs.copy()
+        logger_enabled = run_kwargs.pop("logger_enabled", False)
+        run_kwargs["logger"] = RLMLogger() if logger_enabled else None
+        run_kwargs["verbose"] = False
+        child = RLM(**run_kwargs)
+        result = child.completion(prompt, root_prompt=None)
+        connection.send({"success": True, "completion": result.to_dict()})
+    except Exception as e:
+        connection.send({"success": False, "error": str(e)})
+    finally:
+        if child is not None:
+            child.close()
+        connection.close()
 
 
 class RLM:
@@ -62,8 +80,10 @@ class RLM:
         max_tokens: int | None = None,
         max_errors: int | None = None,
         custom_system_prompt: str | None = None,
+        prompt_profile: str = "default",
         other_backends: list[ClientBackend] | None = None,
         other_backend_kwargs: list[dict[str, Any]] | None = None,
+        subagent_max_iterations: int | None = None,
         subagent_backend: ClientBackend | None = None,
         subagent_backend_kwargs: dict[str, Any] | None = None,
         subagent_model_selector: Callable[[str, int], str | None] | None = None,
@@ -74,7 +94,6 @@ class RLM:
         custom_sub_tools: dict[str, Any] | None = None,
         compaction: bool = False,
         compaction_threshold_pct: float = 0.85,
-        max_concurrent_subcalls: int = 4,
         on_subcall_start: Callable[[int, str, str], None] | None = None,
         on_subcall_complete: Callable[[int, str, float, str | None], None] | None = None,
         on_iteration_start: Callable[[int, int], None] | None = None,
@@ -94,6 +113,12 @@ class RLM:
             max_tokens: Maximum total tokens (input + output). Execution stops if exceeded, returning best answer if available.
             max_errors: Maximum consecutive errors before stopping. Execution stops if exceeded, returning best answer if available.
             custom_system_prompt: The custom system prompt to use for the RLM.
+            prompt_profile: Prompt profile used to build system/user prompts. Built-ins:
+                "default", "encourage_subagent", "force_subagent". You can also pass
+                "module:pkg.path".
+            subagent_max_iterations: Maximum iterations for recursive child RLMs. If None,
+                children inherit the parent's max_iterations. Set to 1 when subagents should
+                behave like single-turn workers instead of iterative agents.
             other_backends: A list of other client backends that the environments can use to make sub-calls.
             other_backend_kwargs: The kwargs to pass to the other client backends (ordered to match other_backends).
             logger: The logger to use for the RLM.
@@ -107,8 +132,6 @@ class RLM:
                 when root context reaches compaction_threshold_pct of the model's context limit.
             compaction_threshold_pct: When compaction is on, trigger summarization when root
                 message token count reaches this fraction of the model context limit (default 0.85).
-            max_concurrent_subcalls: Maximum number of parallel threads for rlm_query_batched subcalls.
-                Each child RLM runs in its own thread. Default 4.
             on_subcall_start: Callback fired when a child RLM starts. Args: (depth, model, prompt_preview).
             on_subcall_complete: Callback fired when a child RLM completes. Args: (depth, model, duration, error_or_none).
             on_iteration_start: Callback fired when an iteration starts. Args: (depth, iteration_num).
@@ -131,6 +154,11 @@ class RLM:
 
         self.other_backends = other_backends
         self.other_backend_kwargs = other_backend_kwargs
+        if subagent_max_iterations is not None and subagent_max_iterations < 1:
+            raise ValueError("subagent_max_iterations must be >= 1 when provided")
+        self.subagent_max_iterations = (
+            max_iterations if subagent_max_iterations is None else subagent_max_iterations
+        )
         self.subagent_backend = subagent_backend
         self.subagent_backend_kwargs = (
             subagent_backend_kwargs.copy() if subagent_backend_kwargs is not None else None
@@ -144,7 +172,6 @@ class RLM:
 
         self.compaction = compaction
         self.compaction_threshold_pct = compaction_threshold_pct
-        self.max_concurrent_subcalls = max_concurrent_subcalls
 
         self.depth = depth
         self.max_depth = max_depth
@@ -153,7 +180,16 @@ class RLM:
         self.max_timeout = max_timeout
         self.max_tokens = max_tokens
         self.max_errors = max_errors
-        self.system_prompt = custom_system_prompt if custom_system_prompt else RLM_SYSTEM_PROMPT
+        resolved_prompt_profile = resolve_prompt_profile(prompt_profile)
+        self.prompt_profile = resolved_prompt_profile.name
+        self.prompt_profile_module = resolved_prompt_profile.module_name
+        self.build_rlm_system_prompt = resolved_prompt_profile.build_rlm_system_prompt
+        self.build_user_prompt = resolved_prompt_profile.build_user_prompt
+        self.system_prompt = (
+            custom_system_prompt
+            if custom_system_prompt
+            else resolved_prompt_profile.system_prompt
+        )
         self.logger = logger
         self.verbose = VerbosePrinter(enabled=verbose)
 
@@ -165,6 +201,10 @@ class RLM:
         self.on_iteration_complete = on_iteration_complete
 
         self._cumulative_cost: float = 0.0
+        self._own_cost: float = 0.0
+        self._child_cost: float = 0.0
+        self._reserved_cost: float = 0.0
+        self._subcall_lock = threading.Lock()
         self._consecutive_errors: int = 0
         self._last_error: str | None = None
         self._best_partial_answer: str | None = None
@@ -200,9 +240,7 @@ class RLM:
 
     def _get_default_subagent_spec(self) -> tuple[ClientBackend, dict[str, Any] | None]:
         if self.subagent_backend is not None or self.subagent_backend_kwargs is not None:
-            child_backend = (
-                self.subagent_backend if self.subagent_backend is not None else self.backend
-            )
+            child_backend = self.subagent_backend if self.subagent_backend is not None else self.backend
             if self.subagent_backend_kwargs is not None:
                 child_backend_kwargs = self.subagent_backend_kwargs.copy()
             elif self.backend_kwargs is not None:
@@ -224,9 +262,7 @@ class RLM:
         if selected_model is None and self.subagent_model_selector is not None:
             selected_model = self.subagent_model_selector(prompt, next_depth)
         if selected_model is not None:
-            child_backend_kwargs = (
-                child_backend_kwargs.copy() if child_backend_kwargs is not None else {}
-            )
+            child_backend_kwargs = child_backend_kwargs.copy() if child_backend_kwargs is not None else {}
             child_backend_kwargs["model_name"] = selected_model
         resolved_model = selected_model or (child_backend_kwargs or {}).get("model_name", "unknown")
         return child_backend, child_backend_kwargs, resolved_model
@@ -244,9 +280,7 @@ class RLM:
 
         # Create other_backend_client if provided (for depth=1 routing)
         other_backend_client: BaseLM | None = None
-        default_subagent_backend, default_subagent_backend_kwargs = (
-            self._get_default_subagent_spec()
-        )
+        default_subagent_backend, default_subagent_backend_kwargs = self._get_default_subagent_spec()
         if (
             default_subagent_backend != self.backend
             or default_subagent_backend_kwargs != self.backend_kwargs
@@ -258,10 +292,7 @@ class RLM:
 
         lm_handler = LMHandler(client, other_backend_client=other_backend_client)
 
-        if (
-            other_backend_client is not None
-            and other_backend_client.model_name != client.model_name
-        ):
+        if other_backend_client is not None and other_backend_client.model_name != client.model_name:
             lm_handler.register_client(other_backend_client.model_name, other_backend_client)
 
         # Register other clients to be available as sub-call options (by model name)
@@ -289,9 +320,11 @@ class RLM:
             env_kwargs["lm_handler_address"] = (lm_handler.host, lm_handler.port)
             env_kwargs["context_payload"] = prompt
             env_kwargs["depth"] = self.depth + 1  # Environment depth is RLM depth + 1
-            if self.environment_type == "local" and self.max_depth > 1:
+            if self.environment_type in {"local", "task"} and self.max_depth > 1:
                 env_kwargs["subcall_fn"] = self._subcall
-                env_kwargs["max_concurrent_subcalls"] = self.max_concurrent_subcalls
+                env_kwargs["reserved_subcall_fn"] = self._subcall_with_reserved_budget
+                env_kwargs["subcall_budget_allocator"] = self._reserve_subcall_budget
+                env_kwargs["on_subcall_batch_start"] = self._on_subcall_batch_start
             if self.custom_tools is not None:
                 env_kwargs["custom_tools"] = self.custom_tools
             if self.custom_sub_tools is not None:
@@ -316,7 +349,7 @@ class RLM:
         up the initial message history.
         """
         metadata = QueryMetadata(prompt)
-        message_history = build_rlm_system_prompt(
+        message_history = self.build_rlm_system_prompt(
             system_prompt=self.system_prompt,
             query_metadata=metadata,
             custom_tools=self.custom_tools,
@@ -394,7 +427,7 @@ class RLM:
                         else 0
                     )
                     current_prompt = message_history + [
-                        build_user_prompt(root_prompt, i, context_count, history_count)
+                        self.build_user_prompt(root_prompt, i, context_count, history_count)
                     ]
 
                     self.verbose.print_iteration_start(i + 1)
@@ -550,15 +583,18 @@ class RLM:
         if self.max_budget is not None:
             current_usage = lm_handler.get_usage_summary()
             current_cost = current_usage.total_cost or 0.0
-            self._cumulative_cost = current_cost
-            if self._cumulative_cost > self.max_budget:
-                self.verbose.print_budget_exceeded(self._cumulative_cost, self.max_budget)
+            with self._subcall_lock:
+                self._own_cost = current_cost
+                self._cumulative_cost = self._own_cost + self._child_cost
+                cumulative_cost = self._cumulative_cost
+            if cumulative_cost > self.max_budget:
+                self.verbose.print_budget_exceeded(cumulative_cost, self.max_budget)
                 raise BudgetExceededError(
-                    spent=self._cumulative_cost,
+                    spent=cumulative_cost,
                     budget=self.max_budget,
                     message=(
                         f"Budget exceeded after iteration {iteration_num + 1}: "
-                        f"spent ${self._cumulative_cost:.6f} "
+                        f"spent ${cumulative_cost:.6f} "
                         f"of ${self.max_budget:.6f} budget"
                     ),
                 )
@@ -711,6 +747,58 @@ class RLM:
         response = client.completion(message)
         return response
 
+    def _reserve_subcall_budget(self, remaining_slots: int = 1) -> float | None:
+        if self.max_budget is None:
+            return None
+        with self._subcall_lock:
+            available_budget = self.max_budget - self._cumulative_cost - self._reserved_cost
+            if available_budget <= 0:
+                reserved_budget = 0.0
+            else:
+                reserved_budget = available_budget / max(remaining_slots, 1)
+                self._reserved_cost += reserved_budget
+            reserved_total = self._reserved_cost
+            available_after_reservation = self.max_budget - self._cumulative_cost - reserved_total
+        self.verbose.print_subcall_budget(
+            phase="reserve",
+            depth=self.depth + 1,
+            reserved_budget=reserved_budget,
+            spent=self._cumulative_cost,
+            reserved_total=reserved_total,
+            available_budget=max(available_after_reservation, 0.0),
+            slot_count=max(remaining_slots, 1),
+        )
+        return reserved_budget
+
+    def _settle_subcall_budget(
+        self,
+        reserved_budget: float | None,
+        actual_spent: float,
+        next_depth: int,
+    ) -> None:
+        with self._subcall_lock:
+            if self.max_budget is not None and reserved_budget is not None:
+                self._reserved_cost = max(self._reserved_cost - reserved_budget, 0.0)
+            self._child_cost += actual_spent
+            self._cumulative_cost = self._own_cost + self._child_cost
+            cumulative_cost = self._cumulative_cost
+            reserved_total = self._reserved_cost
+            available_budget = None
+            if self.max_budget is not None:
+                available_budget = self.max_budget - cumulative_cost - reserved_total
+        if self.max_budget is not None:
+            self.verbose.print_subcall_budget(
+                phase="settle",
+                depth=next_depth,
+                reserved_budget=reserved_budget,
+                spent=actual_spent,
+                reserved_total=reserved_total,
+                available_budget=max(available_budget or 0.0, 0.0),
+            )
+
+    def _on_subcall_batch_start(self, depth: int, prompt_count: int, max_workers: int) -> None:
+        self.verbose.print_subcall_batch(depth, prompt_count, max_workers)
+
     def _handle_subcall_start(self, depth: int, model: str, prompt_preview: str) -> None:
         self.verbose.print_subcall_start(depth, model, prompt_preview)
         if self._user_on_subcall_start is not None:
@@ -723,7 +811,186 @@ class RLM:
         if self._user_on_subcall_complete is not None:
             self._user_on_subcall_complete(depth, model, duration, error_or_none)
 
-    def _subcall(self, prompt: str, model: str | None = None) -> RLMChatCompletion:
+    def _subcall_with_reserved_budget(
+        self,
+        prompt: str,
+        model: str | None = None,
+        reserved_budget: float | None = None,
+    ) -> RLMChatCompletion:
+        return self._subcall_process_isolated(prompt, model=model, reserved_budget=reserved_budget)
+
+    def _build_child_kwargs(
+        self,
+        child_backend: ClientBackend,
+        child_backend_kwargs: dict[str, Any] | None,
+        next_depth: int,
+        remaining_budget: float | None,
+        remaining_timeout: float | None,
+    ) -> dict[str, Any]:
+        return {
+            "backend": child_backend,
+            "backend_kwargs": child_backend_kwargs,
+            "environment": self.environment_type,
+            "environment_kwargs": self.environment_kwargs,
+            "depth": next_depth,
+            "max_depth": self.max_depth,
+            "max_iterations": self.subagent_max_iterations,
+            "max_budget": remaining_budget,
+            "max_timeout": remaining_timeout,
+            "max_tokens": self.max_tokens,
+            "max_errors": self.max_errors,
+            "custom_system_prompt": self.system_prompt,
+            "prompt_profile": self.prompt_profile,
+            "other_backends": self.other_backends,
+            "other_backend_kwargs": self.other_backend_kwargs,
+            "subagent_max_iterations": self.subagent_max_iterations,
+            "subagent_backend": self.subagent_backend,
+            "subagent_backend_kwargs": self.subagent_backend_kwargs.copy()
+            if self.subagent_backend_kwargs is not None
+            else None,
+            "subagent_model_selector": self.subagent_model_selector,
+            "logger_enabled": self.logger is not None,
+            "custom_tools": self.custom_sub_tools,
+            "custom_sub_tools": self.custom_sub_tools,
+        }
+
+    def _run_child_completion_in_subprocess(
+        self, child_kwargs: dict[str, Any], prompt: str
+    ) -> RLMChatCompletion:
+        try:
+            pickle.dumps((child_kwargs, prompt))
+        except Exception as e:
+            raise ValueError(
+                "Process-isolated subcalls require pickleable child configuration and tools"
+            ) from e
+
+        ctx = mp.get_context("spawn")
+        parent_conn, child_conn = ctx.Pipe(duplex=False)
+        process = ctx.Process(
+            target=_run_child_completion_entry,
+            args=(child_conn, child_kwargs, prompt),
+        )
+        process.start()
+        child_conn.close()
+        try:
+            payload = parent_conn.recv()
+        except EOFError as e:
+            raise RuntimeError("Child RLM subprocess exited before returning a result") from e
+        finally:
+            parent_conn.close()
+            process.join()
+
+        if not payload.get("success"):
+            raise RuntimeError(payload.get("error", "Child RLM subprocess failed"))
+        return RLMChatCompletion.from_dict(payload["completion"])
+
+    def _subcall_process_isolated(
+        self,
+        prompt: str,
+        model: str | None = None,
+        reserved_budget: float | None = None,
+    ) -> RLMChatCompletion:
+        next_depth = self.depth + 1
+
+        child_backend, child_backend_kwargs, resolved_model = self._resolve_subagent_spec(
+            prompt, next_depth, model
+        )
+
+        if next_depth >= self.max_depth:
+            return self._subcall(prompt, model=model, reserved_budget=reserved_budget)
+
+        remaining_budget = None
+        cumulative_cost = self._cumulative_cost
+        if self.max_budget is not None:
+            with self._subcall_lock:
+                cumulative_cost = self._cumulative_cost
+                reserved_total = self._reserved_cost
+            if reserved_budget is not None:
+                remaining_budget = reserved_budget
+            else:
+                remaining_budget = self.max_budget - cumulative_cost - reserved_total
+            if remaining_budget <= 0:
+                return RLMChatCompletion(
+                    root_model=resolved_model,
+                    prompt=prompt,
+                    response=(
+                        "Error: Budget exhausted "
+                        f"(spent ${cumulative_cost:.6f} of ${self.max_budget:.6f})"
+                    ),
+                    usage_summary=UsageSummary(model_usage_summaries={}),
+                    execution_time=0.0,
+                )
+
+        remaining_timeout = None
+        if self.max_timeout is not None and self._completion_start_time is not None:
+            elapsed = time.perf_counter() - self._completion_start_time
+            remaining_timeout = self.max_timeout - elapsed
+            if remaining_timeout <= 0:
+                return RLMChatCompletion(
+                    root_model=resolved_model,
+                    prompt=prompt,
+                    response=f"Error: Timeout exhausted ({elapsed:.1f}s of {self.max_timeout:.1f}s)",
+                    usage_summary=UsageSummary(model_usage_summaries={}),
+                    execution_time=0.0,
+                )
+
+        prompt_preview = prompt[:80] if len(prompt) > 80 else prompt
+        if self.on_subcall_start:
+            try:
+                self.on_subcall_start(next_depth, str(resolved_model), prompt_preview)
+            except Exception:
+                pass
+
+        subcall_start = time.perf_counter()
+        error_msg: str | None = None
+        child_kwargs = self._build_child_kwargs(
+            child_backend,
+            child_backend_kwargs,
+            next_depth,
+            remaining_budget,
+            remaining_timeout,
+        )
+        try:
+            result = self._run_child_completion_in_subprocess(child_kwargs, prompt)
+            child_spent = 0.0
+            if result.usage_summary and result.usage_summary.total_cost is not None:
+                child_spent = result.usage_summary.total_cost
+            self._settle_subcall_budget(reserved_budget, child_spent, next_depth)
+            return result
+        except BudgetExceededError as e:
+            self._settle_subcall_budget(reserved_budget, e.spent, next_depth)
+            error_msg = f"Budget exceeded - {e}"
+            return RLMChatCompletion(
+                root_model=resolved_model,
+                prompt=prompt,
+                response=f"Error: Child RLM budget exceeded - {e}",
+                usage_summary=UsageSummary(model_usage_summaries={}),
+                execution_time=time.perf_counter() - subcall_start,
+            )
+        except Exception as e:
+            self._settle_subcall_budget(reserved_budget, 0.0, next_depth)
+            error_msg = str(e)
+            return RLMChatCompletion(
+                root_model=resolved_model,
+                prompt=prompt,
+                response=f"Error: Child RLM completion failed - {e}",
+                usage_summary=UsageSummary(model_usage_summaries={}),
+                execution_time=time.perf_counter() - subcall_start,
+            )
+        finally:
+            if self.on_subcall_complete:
+                try:
+                    duration = time.perf_counter() - subcall_start
+                    self.on_subcall_complete(next_depth, str(resolved_model), duration, error_msg)
+                except Exception:
+                    pass
+
+    def _subcall(
+        self,
+        prompt: str,
+        model: str | None = None,
+        reserved_budget: float | None = None,
+    ) -> RLMChatCompletion:
         """
         Handle a subcall from the environment, potentially spawning a child RLM.
 
@@ -775,15 +1042,22 @@ class RLM:
 
         # Calculate remaining budget for child (if budget tracking enabled)
         remaining_budget = None
+        cumulative_cost = self._cumulative_cost
         if self.max_budget is not None:
-            remaining_budget = self.max_budget - self._cumulative_cost
+            with self._subcall_lock:
+                cumulative_cost = self._cumulative_cost
+                reserved_total = self._reserved_cost
+            if reserved_budget is not None:
+                remaining_budget = reserved_budget
+            else:
+                remaining_budget = self.max_budget - cumulative_cost - reserved_total
             if remaining_budget <= 0:
                 return RLMChatCompletion(
                     root_model=resolved_model,
                     prompt=prompt,
                     response=(
                         "Error: Budget exhausted "
-                        f"(spent ${self._cumulative_cost:.6f} of ${self.max_budget:.6f})"
+                        f"(spent ${cumulative_cost:.6f} of ${self.max_budget:.6f})"
                     ),
                     usage_summary=UsageSummary(model_usage_summaries={}),
                     execution_time=0.0,
@@ -824,22 +1098,22 @@ class RLM:
             environment_kwargs=self.environment_kwargs,
             depth=next_depth,
             max_depth=self.max_depth,
-            max_iterations=self.max_iterations,
+            max_iterations=self.subagent_max_iterations,
             max_budget=remaining_budget,
             max_timeout=remaining_timeout,
             max_tokens=self.max_tokens,
             max_errors=self.max_errors,
             custom_system_prompt=self.system_prompt,
+            prompt_profile=self.prompt_profile,
             other_backends=self.other_backends,
             other_backend_kwargs=self.other_backend_kwargs,
+            subagent_max_iterations=self.subagent_max_iterations,
             subagent_backend=self.subagent_backend,
             subagent_backend_kwargs=self.subagent_backend_kwargs,
             subagent_model_selector=self.subagent_model_selector,
             # Give child its own logger so its trajectory is captured in metadata
             logger=RLMLogger() if self.logger else None,
             verbose=False,
-            # Propagate concurrency settings to children
-            max_concurrent_subcalls=self.max_concurrent_subcalls,
             # Propagate custom tools to children (sub_tools become the child's tools)
             custom_tools=self.custom_sub_tools,
             custom_sub_tools=self.custom_sub_tools,
@@ -849,13 +1123,13 @@ class RLM:
         )
         try:
             result = child.completion(prompt, root_prompt=None)
-            # Track child's cost in parent's cumulative cost
-            if result.usage_summary and result.usage_summary.total_cost:
-                self._cumulative_cost += result.usage_summary.total_cost
+            child_spent = 0.0
+            if result.usage_summary and result.usage_summary.total_cost is not None:
+                child_spent = result.usage_summary.total_cost
+            self._settle_subcall_budget(reserved_budget, child_spent, next_depth)
             return result
         except BudgetExceededError as e:
-            # Propagate child's spending to parent
-            self._cumulative_cost += e.spent
+            self._settle_subcall_budget(reserved_budget, e.spent, next_depth)
             error_msg = f"Budget exceeded - {e}"
             return RLMChatCompletion(
                 root_model=resolved_model,
@@ -865,6 +1139,7 @@ class RLM:
                 execution_time=time.perf_counter() - subcall_start,
             )
         except Exception as e:
+            self._settle_subcall_budget(reserved_budget, 0.0, next_depth)
             error_msg = str(e)
             return RLMChatCompletion(
                 root_model=resolved_model,

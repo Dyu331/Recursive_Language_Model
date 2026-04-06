@@ -1,0 +1,29 @@
+{
+    "id": "b2d79ebb-2128-4ded-8c89-3612392734f2",
+    "started_at": "2026-04-03T11:35:26.252386",
+    "finished_at": "2026-04-03T11:39:42.178026",
+    "n_total_trials": 1,
+    "stats": {
+        "n_trials": 1,
+        "n_errors": 0,
+        "evals": {
+            "installed-rlm-agent__terminal-bench": {
+                "n_trials": 1,
+                "n_errors": 0,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "reward_stats": {
+                    "reward": {
+                        "0.0": [
+                            "merge-diff-arc-agi-task__WUYN5Xd"
+                        ]
+                    }
+                },
+                "exception_stats": {}
+            }
+        }
+    }
+}

@@ -1,0 +1,14 @@
+/app
+
+== /app ==
+total 24
+drwxr-xr-x 1 root root 4096 Oct 28 06:34 .
+drwxr-xr-x 1 root root 4096 Apr  3 02:48 ..
+-rw-r--r-- 1 root root 4654 Oct 28 06:34 main.cpp
+-rw-r--r-- 1 root root  259 Oct 28 06:34 user.cpp
+-rw-r--r-- 1 root root  278 Oct 28 06:34 user.h
+
+== /app/repo ==
+ls: cannot access '/app/repo': No such file or directory
+
+[EXIT CODE] 2

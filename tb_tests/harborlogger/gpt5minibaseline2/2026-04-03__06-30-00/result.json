@@ -1,0 +1,29 @@
+{
+    "id": "f49b9d91-d932-4ee7-ba03-0a44f653b94c",
+    "started_at": "2026-04-03T06:30:00.852368",
+    "finished_at": "2026-04-03T06:48:49.789150",
+    "n_total_trials": 1,
+    "stats": {
+        "n_trials": 1,
+        "n_errors": 0,
+        "evals": {
+            "installed-rlm-agent__terminal-bench": {
+                "n_trials": 1,
+                "n_errors": 0,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "reward_stats": {
+                    "reward": {
+                        "0.0": [
+                            "schemelike-metacircular-eval__Soy3u7m"
+                        ]
+                    }
+                },
+                "exception_stats": {}
+            }
+        }
+    }
+}

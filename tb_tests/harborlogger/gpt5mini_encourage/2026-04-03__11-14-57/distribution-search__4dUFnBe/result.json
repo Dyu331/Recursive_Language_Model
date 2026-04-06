@@ -1,0 +1,117 @@
+{
+    "id": "5e5eab53-ba9e-4701-9d38-e6d808e73004",
+    "task_name": "distribution-search",
+    "trial_name": "distribution-search__4dUFnBe",
+    "trial_uri": "file:///home/subc/rlm/jobs/2026-04-03__11-14-57/distribution-search__4dUFnBe",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "distribution-search"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "9566c59435661995a4a64e71afc6b80baaa6339307dea1ae28608c9f2c1ce033",
+    "config": {
+        "task": {
+            "path": "distribution-search",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "distribution-search__4dUFnBe",
+        "trials_dir": "jobs/2026-04-03__11-14-57",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "installed_rlm_agent:InstalledRLMAgent",
+            "model_name": null,
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {
+                "backend": "openai",
+                "backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "sub_backend": "openai",
+                "sub_backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "rlm_max_depth": 2,
+                "rlm_max_iterations": 30,
+                "rlm_max_timeout_sec": 3600,
+                "rlm_log_dir": "./gpt5mini_encourage/distribution-search",
+                "rlm_prompt_profile": "encourage_subagent"
+            },
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "191c7ef7-5dad-4cba-abcb-fbd43fe21504"
+    },
+    "agent_info": {
+        "name": "installed-rlm-agent",
+        "version": "1.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": 844806,
+        "n_cache_tokens": null,
+        "n_output_tokens": 68553,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "agent": "installed-rlm-agent",
+            "execution_path": "task-backed-repl",
+            "environment": "task",
+            "root_model": "gpt-5-mini",
+            "execution_time_sec": 1184.167299921999,
+            "final_response_preview": "NO_SOLUTION_FOUND: Could not find a probability vector P (V=150000) with both KL(P||U)=10.0 +/-0.001 and KL(U||P)=10.0 +/-0.001 within the numeric search. Best two-mass candidate: k=8, a=0.12499433131284844, b=3.0234610654212043e-10, forward=9.838003948580027, backward=10.000000002237664. Best three-mass candidate: k1=4, k2=3, a=0.25, c=0.33333333333333326, b=3.023773405405694e-10, forward=9.982298506382268, backward=10.693160728281972, combined_err=0.7108622218997045. See /app/find_dist.py for the search code and logs."
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-03T03:14:58.038309Z",
+    "finished_at": "2026-04-03T03:35:10.092509Z",
+    "environment_setup": {
+        "started_at": "2026-04-03T03:14:58.042682Z",
+        "finished_at": "2026-04-03T03:14:59.603342Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-03T03:14:59.603514Z",
+        "finished_at": "2026-04-03T03:14:59.603670Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-03T03:14:59.603774Z",
+        "finished_at": "2026-04-03T03:34:45.641288Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-03T03:34:45.641542Z",
+        "finished_at": "2026-04-03T03:34:58.512350Z"
+    }
+}

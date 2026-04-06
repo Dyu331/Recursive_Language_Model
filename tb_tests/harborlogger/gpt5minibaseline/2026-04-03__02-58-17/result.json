@@ -1,0 +1,29 @@
+{
+    "id": "cea132c2-028a-45fd-a06a-6883fe94390e",
+    "started_at": "2026-04-03T02:58:18.004021",
+    "finished_at": "2026-04-03T03:05:19.613961",
+    "n_total_trials": 1,
+    "stats": {
+        "n_trials": 1,
+        "n_errors": 0,
+        "evals": {
+            "installed-rlm-agent__terminal-bench": {
+                "n_trials": 1,
+                "n_errors": 0,
+                "metrics": [
+                    {
+                        "mean": 1.0
+                    }
+                ],
+                "reward_stats": {
+                    "reward": {
+                        "1.0": [
+                            "custom-memory-heap-crash__isxHaGa"
+                        ]
+                    }
+                },
+                "exception_stats": {}
+            }
+        }
+    }
+}

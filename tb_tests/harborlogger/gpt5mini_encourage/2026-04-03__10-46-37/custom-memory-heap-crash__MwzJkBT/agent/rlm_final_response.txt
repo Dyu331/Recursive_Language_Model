@@ -1,0 +1,33 @@
+Fix applied to /app/user.cpp: Pre-initialize iostream/locale internals in user_init() so
+that libstdc++ lazy allocations happen BEFORE the program installs its custom global
+heap (g_custom_heap). This prevents standard-library allocations from using the
+custom heap and being freed or accessed after that heap is destroyed, which caused
+a release-only SIGSEGV. Only /app/user.cpp was modified (per constraints).
+
+What changed (summary):
+- user_init() now does lightweight operations that force std::iostream internals to
+  initialize: creates/uses an ostringstream, imbues std::cout with the default
+  locale, and touches std::cout.rdbuf().
+
+How to reproduce / verify:
+1) Release build:
+   g++ -std=c++17 -o /app/release /app/main.cpp /app/user.cpp -O2 -DNDEBUG \
+       -L/usr/local/gcc-custom-release/lib64 -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -lm
+   Run: /app/release  (exits 0, no crash)
+
+2) Valgrind check:
+   valgrind --leak-check=full --show-leak-kinds=all /app/release
+   Result: ERROR SUMMARY: 0 errors. One 'still reachable' block from runtime static
+   init (eh_alloc) is normal and not introduced by this change. No definite/possible leaks.
+
+Rationale: The custom global new operator is installed in Application::init() and
+allocates from a manual heap. Some libstdc++ internals lazily allocate memory and
+may otherwise use that custom heap; initializing them early ensures they use the
+normal allocator and avoids use-after-free at shutdown. This is a minimal, safe fix
+that does not change other files.
+
+Files changed:
+- /app/user.cpp (modified only)
+
+If you want a more minimal variant or an alternative approach (e.g., install the
+custom heap earlier and properly manage std::cout lifetime), I can provide it.

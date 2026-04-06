@@ -10,15 +10,6 @@ from datasets import load_dataset
 from rlm import RLM
 from rlm.clients import get_client
 from rlm.logger.rlm_logger import RLMLogger
-from rlm.utils.dynamic_model_picker_prompt import (
-    RLM_SYSTEM_PROMPT as DYNAMIC_MODEL_PICKER_PROMPT,
-)
-from rlm.utils.parallel_subagent_prompt import (
-    RLM_SYSTEM_PROMPT as PARALLEL_SUBAGENT_PROMPT,
-)
-from rlm.utils.subagent_confidence_selfeval_prompt import (
-    RLM_SYSTEM_PROMPT as SUBAGENT_CONFIDENCE_SELFEVAL_PROMPT,
-)
 from rlm.utils.subagent_encouraging_prompt import (
     RLM_SYSTEM_PROMPT as SUBAGENT_ENCOURAGING_PROMPT,
 )
@@ -51,17 +42,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--model_name",
-        default=os.getenv("BROWSECOMP_MODEL", "gpt-5.4-mini"),
+        default=os.getenv("BROWSECOMP_MODEL", "gpt-5-mini"),
     )
     parser.add_argument(
         "--system_prompt",
-        choices=[
-            "default",
-            "subagent_encouraging",
-            "subagent_confidence_selfeval",
-            "dynamic_model_picker",
-            "parallel_subagent",
-        ],
+        choices=["default", "subagent_encouraging"],
         default="default",
     )
     parser.add_argument(
@@ -223,9 +208,7 @@ def build_smoke_test_docs(
     return docs
 
 
-def ensure_gold_doc_in_context(
-    corpus_docs: list[CorpusDoc], *, gold_doc: CorpusDoc, total_docs: int
-) -> tuple[list[CorpusDoc], bool]:
+def ensure_gold_doc_in_context(corpus_docs: list[CorpusDoc], *, gold_doc: CorpusDoc, total_docs: int) -> tuple[list[CorpusDoc], bool]:
     if total_docs <= 0:
         raise ValueError("total_docs must be > 0")
     if not gold_doc.docid:
@@ -288,9 +271,7 @@ def normalize_corpus_docs(raw_docs: list[dict[str, Any]]) -> list[CorpusDoc]:
     return out
 
 
-def build_context_payload(
-    query_record: dict[str, Any], corpus_docs: list[CorpusDoc]
-) -> dict[str, Any]:
+def build_context_payload(query_record: dict[str, Any], corpus_docs: list[CorpusDoc]) -> dict[str, Any]:
     return {
         "query": query_record.get("query"),
         "query_id": query_record.get("query_id"),
@@ -313,11 +294,14 @@ def build_prompt() -> str:
     )
 
 
-def build_baseline_prompt(
-    query_record: dict[str, Any], corpus_docs: list[CorpusDoc]
-) -> list[dict[str, str]]:
+def build_baseline_prompt(query_record: dict[str, Any], corpus_docs: list[CorpusDoc]) -> list[dict[str, str]]:
     corpus_text = "\n\n".join(
-        (f"DocID: {doc.docid}\nTitle: {doc.title}\nText:\n{doc.text}") for doc in corpus_docs
+        (
+            f"DocID: {doc.docid}\n"
+            f"Title: {doc.title}\n"
+            f"Text:\n{doc.text}"
+        )
+        for doc in corpus_docs
     )
     return [
         {
@@ -343,12 +327,6 @@ def get_custom_system_prompt(system_prompt: str) -> str | None:
         return None
     if system_prompt == "subagent_encouraging":
         return SUBAGENT_ENCOURAGING_PROMPT
-    if system_prompt == "subagent_confidence_selfeval":
-        return SUBAGENT_CONFIDENCE_SELFEVAL_PROMPT
-    if system_prompt == "dynamic_model_picker":
-        return DYNAMIC_MODEL_PICKER_PROMPT
-    if system_prompt == "parallel_subagent":
-        return PARALLEL_SUBAGENT_PROMPT
     raise ValueError(f"Unsupported system_prompt='{system_prompt}'")
 
 
@@ -379,9 +357,7 @@ def main() -> None:
         gold_docid = str(query_record["gold_docs"][0].get("docid", ""))
         selected_docids = [d.docid for d in corpus_docs]
         if gold_docid not in selected_docids:
-            raise RuntimeError(
-                "Smoke test invariant failed: gold docid not in selected corpus docs"
-            )
+            raise RuntimeError("Smoke test invariant failed: gold docid not in selected corpus docs")
         print("Smoke test gold docid:", gold_docid)
         print("Smoke test selected docids:", selected_docids)
     else:
@@ -407,7 +383,7 @@ def main() -> None:
 
     context_payload = build_context_payload(query_record, corpus_docs)
     backend_kwargs = get_backend_kwargs(args.model_name)
-    subagent_backend_kwargs = get_backend_kwargs("gpt-5.4-mini")
+    subagent_backend_kwargs = get_backend_kwargs("gpt-5-nano")
 
     logger: RLMLogger | None = None
     rlm: RLM | None = None

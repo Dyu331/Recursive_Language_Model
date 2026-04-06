@@ -1,0 +1,116 @@
+{
+    "id": "6d7cd84c-965b-433b-ad52-367bb965c993",
+    "task_name": "db-wal-recovery",
+    "trial_name": "db-wal-recovery__dEDc5Co",
+    "trial_uri": "file:///home/subc/rlm/jobs/2026-04-03__03-05-31/db-wal-recovery__dEDc5Co",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "db-wal-recovery"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "01f470c86f3a1f7ce4d91bdf0aaaa89fa96a4124ac48617990e2735b5291913a",
+    "config": {
+        "task": {
+            "path": "db-wal-recovery",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "db-wal-recovery__dEDc5Co",
+        "trials_dir": "jobs/2026-04-03__03-05-31",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "installed_rlm_agent:InstalledRLMAgent",
+            "model_name": null,
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {
+                "backend": "openai",
+                "backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "sub_backend": "openai",
+                "sub_backend_kwargs": {
+                    "model_name": "gpt-5-mini"
+                },
+                "rlm_max_depth": 2,
+                "rlm_max_iterations": 30,
+                "rlm_max_timeout_sec": 1800,
+                "rlm_log_dir": "./gpt5minibaseline/db-wal-recovery"
+            },
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "aaf07498-1172-4d7c-be2e-5e0068a76a39"
+    },
+    "agent_info": {
+        "name": "installed-rlm-agent",
+        "version": "1.0",
+        "model_info": null
+    },
+    "agent_result": {
+        "n_input_tokens": 11941,
+        "n_cache_tokens": null,
+        "n_output_tokens": 2068,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": {
+            "agent": "installed-rlm-agent",
+            "execution_path": "task-backed-repl",
+            "environment": "task",
+            "root_model": "gpt-5-mini",
+            "execution_time_sec": 46.30247300700012,
+            "final_response_preview": "[{\"id\": 1, \"name\": \"apple\", \"value\": 150}, {\"id\": 2, \"name\": \"banana\", \"value\": 250}, {\"id\": 3, \"name\": \"cherry\", \"value\": 300}, {\"id\": 4, \"name\": \"date\", \"value\": 400}, {\"id\": 5, \"name\": \"elderberry\", \"value\": 500}, {\"id\": 6, \"name\": \"fig\", \"value\": 600}, {\"id\": 7, \"name\": \"grape\", \"value\": 700}, {\"id\": 8, \"name\": \"honeydew\", \"value\": 800}, {\"id\": 9, \"name\": \"kiwi\", \"value\": 900}, {\"id\": 10, \"name\": \"lemon\", \"value\": 1000}, {\"id\": 11, \"name\": \"mango\", \"value\": 1100}]"
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-04-02T19:05:31.772645Z",
+    "finished_at": "2026-04-02T19:07:08.077219Z",
+    "environment_setup": {
+        "started_at": "2026-04-02T19:05:31.773431Z",
+        "finished_at": "2026-04-02T19:05:44.600329Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-04-02T19:05:44.600376Z",
+        "finished_at": "2026-04-02T19:05:44.600443Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-04-02T19:05:44.600494Z",
+        "finished_at": "2026-04-02T19:06:32.937929Z"
+    },
+    "verifier": {
+        "started_at": "2026-04-02T19:06:32.938014Z",
+        "finished_at": "2026-04-02T19:06:56.525895Z"
+    }
+}

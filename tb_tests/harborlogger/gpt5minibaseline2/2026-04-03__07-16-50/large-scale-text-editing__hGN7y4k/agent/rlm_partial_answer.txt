@@ -1,0 +1,47 @@
+```repl
+# Plan execution: write a new apply_macros.vim using normal-safe uppercase (0gU$)
+# and Ex substitutions. Then run vim headlessly and verify the checksum.
+import subprocess, os, textwrap
+
+a = ":s/^\\s*\\([^,]*\\)\\s*,\\s*\\([^,]*\\)\\s*,\\s*\\([^,]*\\)\\s*$/\\3;\\2;\\1;OK/\\r"
+b = ":s/^\\s*//\\r:s/\\s*$//\\r:s/\\s*;\\s*/;/g\\r"
+c = "0gU$"
+
+print("Macro lengths:", len(a), len(b), len(c), "total=", len(a)+len(b)+len(c))
+
+script = f"""call setreg('a', "{a}")
+call setreg('b', "{b}")
+call setreg('c', "{c}")
+:%normal! @a
+:%normal! @b
+:%normal! @c
+:wq
+"""
+open("/app/apply_macros.vim","w").write(script)
+print("Wrote /app/apply_macros.vim (bytes=%d)" % len(script))
+print("Running vim to apply macros...")
+
+cmd = "vim -Nu NONE -n -Es /app/input.csv -S /app/apply_macros.vim"
+proc = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+print("vim returncode:", proc.returncode)
+if proc.stdout:
+    print("vim stdout (trunc):", proc.stdout[:500])
+if proc.stderr:
+    print("vim stderr (trunc):", proc.stderr[:500])
+
+sha_in = subprocess.check_output("sha256sum /app/input.csv | awk '{print $1}'", shell=True, universal_newlines=True).strip()
+sha_exp = subprocess.check_output("sha256sum /app/expected.csv | awk '{print $1}'", shell=True, universal_newlines=True).strip()
+print("sha input :", sha_in)
+print("sha expect:", sha_exp)
+
+print("Sample first line (input):", subprocess.check_output("head -n1 /app/input.csv", shell=True, universal_newlines=True).strip())
+print("Sample first line (expected):", subprocess.check_output("head -n1 /app/expected.csv", shell=True, universal_newlines=True).strip())
+
+# Set final_answer variable for the required FINAL_VAR(...) call in the next response.
+if sha_in == sha_exp and proc.returncode == 0:
+    final_answer = "SUCCESS: /app/input.csv now matches /app/expected.csv"
+else:
+    final_answer = "FAIL: checksums differ or vim returned non-zero (vim_rc=%d)" % proc.returncode
+
+print("final_answer ready:", final_answer)
+```

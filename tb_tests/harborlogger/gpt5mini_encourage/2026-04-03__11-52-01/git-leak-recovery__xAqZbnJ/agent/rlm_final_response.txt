@@ -1,0 +1,58 @@
+STEP 0: BACKUP
+cp -a /app/repo /app/repo.backup  # make a full filesystem backup copy of the repo directory
+git clone --mirror /app/repo /tmp/repo.git  # create a bare mirror clone (safe workspace for history rewrite)
+
+STEP 1: LOCATE AND RECOVER THE SECRET (writes only the secret + trailing newline to /app/secret.txt)
+cd /app/repo  # operate from the repo working directory
+MATCH=$(git rev-list --all | xargs -n1 git grep -n --no-color "secret[" 2>/dev/null | sed -n '1p')  # search every commit for the first occurrence of literal "secret["
+# If MATCH is empty that means no match was found; the later commands will handle that case.
+echo "$MATCH"  # show the matching entry (format: <commit>:<path>:<lineno>:<line>)
+COMMIT=$(printf '%s' "$MATCH" | cut -d: -f1)  # extract the commit id from the match
+FILE=$(printf '%s' "$MATCH" | cut -d: -f2)  # extract the file path from the match
+git show "$COMMIT":"$FILE" | grep -o 'secret\[[^]]*\]' | head -n1 > /app/secret.txt  # extract the first secret[...] from that file blob and write it to /app/secret.txt
+# Ensure trailing newline
+printf '\n' >> /app/secret.txt  # append a newline to /app/secret.txt to ensure the file ends with a newline
+
+STEP 2: REWRITE HISTORY TO REMOVE THE SECRET (PREFER git-filter-repo; FALLBACK to git filter-branch shown)
+# Prefer git-filter-repo (fast, safe). It must be installed. We operate on the mirror at /tmp/repo.git to avoid mutating the original until finished.
+SECRET=$(cat /app/secret.txt)  # read recovered secret into a variable
+printf '%s==>REDACTED\n' "$SECRET" > /tmp/replacements.txt  # create replacement mapping: exact secret => REDACTED
+cd /tmp/repo.git  # work in the bare mirrored repo
+git filter-repo --replace-text /tmp/replacements.txt  # rewrite history replacing the secret string with 'REDACTED' everywhere
+# Replace the original working repo with a fresh clone from the cleaned mirror:
+rm -rf /app/repo.pre_filter_backup || true
+mv /app/repo /app/repo.pre_filter_backup  # keep a copy of the old working repo (safety)
+git clone /tmp/repo.git /app/repo  # create a cleaned working clone from the filtered mirror
+
+# FALLBACK using git filter-branch if git-filter-repo is unavailable (use only if filter-repo not installed)
+# WARNING: filter-branch is slower and more error-prone; test on backups first.
+cd /app/repo.pre_filter_backup  # operate on the backup copy to produce a cleaned repository
+SECRET_ESCAPED=$(printf '%s' "$(cat /app/secret.txt)" | sed -e 's/\/\\/g' -e 's/\//\\\//g' -e 's/\&/\\\&/g')  # escape special chars
+git filter-branch --force --prune-empty --tree-filter 'grep -q "secret\[" -r --exclude-dir=.git . || true; if grep -q "$SECRET_ESCAPED" -r --exclude-dir=.git .; then git ls-files -z | xargs -0 sed -i "s/'"$SECRET_ESCAPED"'/REDACTED/g" || true; fi' -- --all  # in-place rewrite replacing literal secret with REDACTED
+# After successful filter-branch run, move the cleaned repo into place:
+rm -rf /app/repo || true
+mv /app/repo.pre_filter_backup /app/repo  # replace original with cleaned repo
+
+STEP 3: VERIFICATION COMMANDS (run after Step 2 completes)
+# 1) Confirm recovered secret file exists and contains only the secret and a trailing newline:
+printf '=== /app/secret.txt contents ===\n'; xxd -p -c 256 /app/secret.txt || cat /app/secret.txt  # show file (hex if xxd available) to ensure only the secret and newline
+# 2) Verify working tree has no occurrences:
+grep -R --line-number -F "secret[" /app/repo || echo "OK: no occurrences in working tree"
+# 3) Verify history (all commits) has no occurrences:
+cd /app/repo
+git rev-list --all | xargs -n1 git grep -n --no-color "secret[" 2>/dev/null || echo "OK: no occurrences in history"
+# 4) Optionally, check blobs directly for leftover secret bytes:
+git rev-list --all --objects | cut -d' ' -f1 | xargs -n1 git cat-file -p 2>/dev/null | grep -F "secret[" -n || echo "OK: no occurrences in blobs"
+
+VERIFICATION CHECKLIST (expected outputs)
+- Command: cat /app/secret.txt
+  Expected: a single line containing the secret in the form secret[...] followed by exactly one newline; nothing else.
+- Command: grep -R --line-number -F "secret[" /app/repo
+  Expected: no output and exit code non-zero; script prints "OK: no occurrences in working tree".
+- Command: git rev-list --all | xargs -n1 git grep -n --no-color "secret[" 2>/dev/null || echo "OK: no occurrences in history"
+  Expected: prints "OK: no occurrences in history" (i.e., no matches found in any commit).
+- Command: git rev-list --all --objects | ... | grep -F "secret[" -n || echo "OK: no occurrences in blobs"
+  Expected: "OK: no occurrences in blobs".
+
+REMEDIATION NOTE (short)
+Create and keep the backups (/app/repo.backup and /tmp/repo.git) until you have manually inspected and tested the cleaned repository and verified clients are updated. Rewriting history will change commit SHAs; coordinate with any collaborators before pushing cleaned history to shared remotes. Risk: filter-branch or filter-repo may alter commits where the secret appears inside file content; commit metadata (timestamps, authors) are typically preserved but commit SHAs will change. Always verify the cleaned repo thoroughly before replacing any remote or allowing users to pull the rewritten history.

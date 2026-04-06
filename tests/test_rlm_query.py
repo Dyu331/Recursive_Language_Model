@@ -203,6 +203,45 @@ class TestRlmQueryBatchedWithSubcallFn:
         assert elapsed < 0.3
         repl.cleanup()
 
+    def test_batched_uses_reserved_subcalls_and_allocator(self):
+        """Top-level recursive batches should pre-allocate reservations and use the reserved subcall path."""
+
+        allocator_calls: list[int] = []
+        batch_starts: list[tuple[int, int, int]] = []
+        reserved_by_prompt: dict[str, float | None] = {}
+
+        def allocate_budget(remaining_slots: int) -> float:
+            allocator_calls.append(remaining_slots)
+            return remaining_slots / 10
+
+        def reserved_subcall_fn(
+            prompt: str,
+            model: str | None = None,
+            reserved_budget: float | None = None,
+        ) -> RLMChatCompletion:
+            reserved_by_prompt[prompt] = reserved_budget
+            return _make_completion(f"resp {prompt}")
+
+        subcall_fn = MagicMock(return_value=_make_completion("unused"))
+        repl = LocalREPL(
+            subcall_fn=subcall_fn,
+            reserved_subcall_fn=reserved_subcall_fn,
+            subcall_budget_allocator=allocate_budget,
+            on_subcall_batch_start=lambda depth, prompt_count, max_workers: batch_starts.append(
+                (depth, prompt_count, max_workers)
+            ),
+            depth=1,
+        )
+
+        repl.execute_code("answers = rlm_query_batched(['a', 'b', 'c'])")
+
+        assert repl.locals["answers"] == ["resp a", "resp b", "resp c"]
+        assert allocator_calls == [3, 2, 1]
+        assert reserved_by_prompt == {"a": 0.3, "b": 0.2, "c": 0.1}
+        assert batch_starts == [(2, 3, 3)]
+        subcall_fn.assert_not_called()
+        repl.cleanup()
+
 
 class TestRlmQueryBatchedWithoutSubcallFn:
     """Tests for rlm_query_batched when no subcall_fn."""

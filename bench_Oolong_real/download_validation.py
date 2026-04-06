@@ -5,6 +5,7 @@ from typing import Any
 
 from datasets import load_dataset
 
+
 DATASET_NAME = "oolongbench/oolong-real"
 DATASET_CONFIG = "dnd"
 DATASET_SPLIT = "validation"
@@ -15,11 +16,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default=DEFAULT_OUTPUT_PATH)
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument(
-        "--allow_two_episodes",
-        action="store_true",
-        help="Write only 2-episode examples instead of the default 1-episode examples.",
-    )
     parser.add_argument(
         "--streaming",
         action=argparse.BooleanOptionalAction,
@@ -40,7 +36,7 @@ def normalize_episodes(record: dict[str, Any]) -> list[int]:
     return normalized
 
 
-def validate_record(record: dict[str, Any], allowed_episode_count: int) -> dict[str, Any]:
+def validate_record(record: dict[str, Any]) -> dict[str, Any]:
     required_str_fields = [
         "id",
         "context_window_id",
@@ -56,8 +52,8 @@ def validate_record(record: dict[str, Any], allowed_episode_count: int) -> dict[
             raise ValueError(f"Expected non-empty string field `{key}` in Oolong Real record")
 
     episodes = normalize_episodes(record)
-    if len(episodes) != allowed_episode_count:
-        raise ValueError(f"Expected only {allowed_episode_count}-episode records after filtering")
+    if len(episodes) != 1:
+        raise ValueError("Expected only single-episode records after filtering")
 
     return {
         "id": record["id"],
@@ -73,7 +69,6 @@ def validate_record(record: dict[str, Any], allowed_episode_count: int) -> dict[
 
 def main() -> None:
     args = parse_args()
-    allowed_episode_count = 2 if args.allow_two_episodes else 1
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     temp_output = f"{args.output}.tmp"
 
@@ -90,9 +85,9 @@ def main() -> None:
             if not isinstance(record, dict):
                 raise ValueError("Expected dict records from Oolong Real dataset")
             episodes = normalize_episodes(record)
-            if len(episodes) != allowed_episode_count:
+            if len(episodes) != 1:
                 continue
-            validated = validate_record({**record, "episodes": episodes}, allowed_episode_count)
+            validated = validate_record({**record, "episodes": episodes})
             json.dump(validated, f, ensure_ascii=False)
             f.write("\n")
             written += 1
@@ -101,7 +96,7 @@ def main() -> None:
 
     os.replace(temp_output, args.output)
 
-    print(f"Wrote {written} {allowed_episode_count}-episode validation examples to {args.output}")
+    print(f"Wrote {written} single-episode validation examples to {args.output}")
 
 
 if __name__ == "__main__":

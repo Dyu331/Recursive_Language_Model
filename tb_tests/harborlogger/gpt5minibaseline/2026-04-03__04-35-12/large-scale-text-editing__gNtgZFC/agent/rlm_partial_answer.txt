@@ -1,0 +1,44 @@
+```repl
+# We'll try a more robust, simpler set of macros that use buffer-wide Ex substitutions
+# (each macro starts with ":" so it runs Ex commands). We'll write the script and run Vim.
+script_path = "/app/apply_macros.vim"
+script = """call setreg('a', ":%%s/^\\s\\+//e|%%s/\\s\\+$//e|%%s/ *, */,/g\\r")
+call setreg('b', ":%%s/\\([^,]*\\),\\([^,]*\\),\\([^,]*\\)/\\3;\\2;\\1;OK/g\\r")
+call setreg('c', ":%%s/.*/\\U&/g\\r")
+:%normal! @a
+:%normal! @b
+:%normal! @c
+:wq
+"""
+with open(script_path, "w", newline="\n") as f:
+    f.write(script)
+
+# Run vim headlessly with the script and report outcome
+import subprocess, hashlib, os, textwrap
+cmd = ["vim", "-Nu", "NONE", "-n", "-Es", "/app/input.csv", "-S", script_path]
+proc = subprocess.run(cmd, capture_output=True, text=True)
+ret = proc.returncode
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1<<20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+sha_inp = sha256("/app/input.csv")
+sha_exp = sha256("/app/expected.csv")
+match = (ret == 0 and sha_inp == sha_exp)
+
+final_answer = {
+    "vim_returncode": ret,
+    "vim_stdout": proc.stdout,
+    "vim_stderr": proc.stderr,
+    "sha_input": sha_inp,
+    "sha_expected": sha_exp,
+    "match": match,
+    "script_path": script_path,
+    "script_contents": script
+}
+print(final_answer)
+```
