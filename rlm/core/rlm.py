@@ -39,7 +39,6 @@ from rlm.utils.rlm_utils import filter_sensitive_keys
 from rlm.utils.token_utils import count_tokens, get_context_limit
 
 
-
 class RLM:
     """
     Recursive Language Model class that the user instantiates and runs on their tasks.
@@ -289,7 +288,7 @@ class RLM:
             env_kwargs["lm_handler_address"] = (lm_handler.host, lm_handler.port)
             env_kwargs["context_payload"] = prompt
             env_kwargs["depth"] = self.depth + 1  # Environment depth is RLM depth + 1
-            if self.environment_type == "local" and self.max_depth > 1:
+            if self.environment_type == "local" and self.max_depth >= 1:
                 env_kwargs["subcall_fn"] = self._subcall
                 env_kwargs["max_concurrent_subcalls"] = self.max_concurrent_subcalls
             if self.custom_tools is not None:
@@ -750,7 +749,14 @@ class RLM:
         if next_depth >= self.max_depth:
             client = get_client(child_backend, child_backend_kwargs or {})
             root_model = resolved_model if resolved_model != "unknown" else client.model_name
+            prompt_preview = prompt[:80] if len(prompt) > 80 else prompt
+            if self.on_subcall_start:
+                try:
+                    self.on_subcall_start(next_depth, str(root_model), prompt_preview)
+                except Exception:
+                    pass
             start_time = time.perf_counter()
+            error_msg: str | None = None
             try:
                 response = client.completion(prompt)
                 end_time = time.perf_counter()
@@ -764,6 +770,7 @@ class RLM:
                     execution_time=end_time - start_time,
                 )
             except Exception as e:
+                error_msg = str(e)
                 end_time = time.perf_counter()
                 return RLMChatCompletion(
                     root_model=root_model,
@@ -772,6 +779,17 @@ class RLM:
                     usage_summary=UsageSummary(model_usage_summaries={}),
                     execution_time=end_time - start_time,
                 )
+            finally:
+                if self.on_subcall_complete:
+                    try:
+                        self.on_subcall_complete(
+                            next_depth,
+                            str(root_model),
+                            time.perf_counter() - start_time,
+                            error_msg,
+                        )
+                    except Exception:
+                        pass
 
         # Calculate remaining budget for child (if budget tracking enabled)
         remaining_budget = None

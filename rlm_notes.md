@@ -116,3 +116,9 @@ This feature supports the benchmark setups:
 - root=`gpt-5-mini`, routed subagents=`gpt-5-mini|gpt-5-nano`
 
 One important caveat is that a benchmark runner must actually allow recursion for subagents to be used. For example, if a runner uses `max_depth=1`, subagents will not be spawned.
+
+
+
+
+## how to use the eval script:
+python -m rlm.utils.eval_success --dir bench_BrowseComp-Plus/replicate_rlm_benchmark 

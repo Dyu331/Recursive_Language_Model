@@ -19,6 +19,7 @@ CHARS_PER_TOKEN_ESTIMATE = 4
 MODEL_CONTEXT_LIMITS: dict[str, int] = {
     # OpenAI (GPT-5: 272k input, 128k reasoning+output)
     "gpt-5-nano": 272_000,
+    "gpt-5-mini": 272_000,
     "gpt-5": 272_000,
     "gpt-4o-mini": 128_000,
     "gpt-4o-2024": 128_000,

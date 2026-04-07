@@ -79,8 +79,8 @@ class TestDepth1CompletionLoop:
             result = rlm.completion("Compute 2*2")
             assert result.response == "4"
 
-    def test_no_subcall_fn_at_depth_1(self):
-        """depth=1 (max_depth=1) should NOT pass subcall_fn to environment."""
+    def test_subcall_fn_at_depth_1(self):
+        """max_depth=1 SHOULD pass subcall_fn so rlm_query routes through _subcall (leaf LM + callbacks)."""
         with patch.object(rlm_module, "get_client") as mock_get_client:
             mock_lm = create_mock_lm(["FINAL(done)"])
             mock_get_client.return_value = mock_lm
@@ -104,7 +104,8 @@ class TestDepth1CompletionLoop:
 
                 call_args = mock_get_env.call_args
                 env_kwargs = call_args[0][1]
-                assert "subcall_fn" not in env_kwargs
+                assert "subcall_fn" in env_kwargs
+                assert env_kwargs["subcall_fn"] is not None
 
     def test_subcall_fn_passed_at_depth_gt_1(self):
         """max_depth>1 SHOULD pass subcall_fn to environment."""

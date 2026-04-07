@@ -1,5 +1,5 @@
 """
-Replicate BrowseComp-Plus RLM benchmark: 50 frozen query IDs, four baselines,
+Replicate BrowseComp-Plus RLM benchmark: 50 frozen query IDs, multiple baselines,
 per-baseline trial counts, JSONL under replicate_rlm_benchmarks/.
 
 Results directory: <baseline>/ when --max_depth 1 (default), else <baseline>_depthN/.
@@ -81,8 +81,10 @@ REPLICATE_QUERY_IDS: tuple[str, ...] = (
 )
 
 # (baseline_name, root_model, sub_model, num_trials)
+# gpt-5 / gpt-5-mini: OpenAI Responses API model ids (distinct from gpt-5.4 family).
 REPLICATE_BASELINES: tuple[tuple[str, str, str, int], ...] = (
     ("flagship-root_mini-sub", "gpt-5.4", "gpt-5.4-mini", 1),
+    ("flagship-root_mini-sub_gpt5", "gpt-5", "gpt-5-mini", 1),
     ("mini-root_mini-sub", "gpt-5.4-mini", "gpt-5.4-mini", 2),
     ("flagship-root_nano-sub", "gpt-5.4", "gpt-5.4-nano", 1),
     ("mini-root_nano-sub", "gpt-5.4-mini", "gpt-5.4-nano", 1),
@@ -97,7 +99,7 @@ def parse_args() -> argparse.Namespace:
         "--baseline",
         default=None,
         choices=_REPLICATE_BASELINE_NAMES,
-        help="Run only this baseline (default: all four)",
+        help="Run only this baseline (default: all configured baselines)",
     )
     p.add_argument(
         "--resume",
@@ -192,18 +194,31 @@ def resolve_output_file(
     return base_dir / f"results_{stamp}.jsonl"
 
 
-_MINI_MODEL = "gpt-5.4-mini"
-_NANO_MODEL = "gpt-5.4-nano"
+# Subagent models used across baselines (gpt-5.4-* and gpt-5-mini share the "mini" bucket).
+_SUBCALL_NANO_MARKERS: tuple[str, ...] = ("gpt-5.4-nano",)
+_SUBCALL_MINI_MARKERS: tuple[str, ...] = ("gpt-5.4-mini", "gpt-5-mini")
+
+
+def _increment_subcall_bucket(counts: dict[str, int], model: str) -> None:
+    m = model
+    if any(marker in m for marker in _SUBCALL_NANO_MARKERS):
+        counts["nano"] += 1
+    elif any(marker in m for marker in _SUBCALL_MINI_MARKERS):
+        counts["mini"] += 1
 
 
 def make_subcall_counter() -> tuple[dict[str, int], Callable[[int, str, str], None]]:
-    counts: dict[str, int] = {_MINI_MODEL: 0, _NANO_MODEL: 0}
+    counts: dict[str, int] = {"mini": 0, "nano": 0}
 
     def on_subcall_start(_depth: int, model: str, _preview: str) -> None:
-        if model in counts:
-            counts[model] += 1
+        _increment_subcall_bucket(counts, model)
 
     return counts, on_subcall_start
+
+
+def reset_subcall_counts(counts: dict[str, int]) -> None:
+    counts["mini"] = 0
+    counts["nano"] = 0
 
 
 def symlink_latest(baseline_name: str, max_depth: int, results_file: Path) -> None:
@@ -319,8 +334,7 @@ def main() -> None:
                         if key in completed:
                             print(f"skip {baseline_name} task={task_id} trial={trial}")
                             continue
-                        subcalls[_MINI_MODEL] = 0
-                        subcalls[_NANO_MODEL] = 0
+                        reset_subcall_counts(subcalls)
                         print(f"run {baseline_name} task={task_id} trial={trial}")
                         result = rlm.completion(context_payload, root_prompt=bc.build_prompt())
                         row: dict[str, Any] = {
@@ -331,8 +345,8 @@ def main() -> None:
                             "ground_truth": ground_truth,
                             "response": result.response,
                             "success": None,
-                            "subagent_calls_mini": subcalls[_MINI_MODEL],
-                            "subagent_calls_nano": subcalls[_NANO_MODEL],
+                            "subagent_calls_mini": subcalls["mini"],
+                            "subagent_calls_nano": subcalls["nano"],
                             "total_time": result.execution_time,
                             "input_tokens": result.usage_summary.total_input_tokens,
                         }
