@@ -9,24 +9,65 @@ import json
 import os
 import uuid
 from datetime import datetime
+from typing import Any
 
 from rlm.core.types import RLMIteration, RLMMetadata
+
+
+def _truncate_words(text: str, max_words: int) -> str:
+    """Return the first max_words whitespace-separated words, with a suffix if truncated."""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    omitted = len(words) - max_words
+    return " ".join(words[:max_words]) + f"\n... [truncated: {omitted} words omitted]"
+
+
+def _truncate_repl_streams(obj: Any, max_words: int) -> Any:
+    """
+    Deep-copy JSON-serializable structures, truncating str values for keys stdout/stderr.
+    """
+    if isinstance(obj, dict):
+        out: dict[Any, Any] = {}
+        for k, v in obj.items():
+            if k in ("stdout", "stderr") and isinstance(v, str):
+                out[k] = _truncate_words(v, max_words)
+            else:
+                out[k] = _truncate_repl_streams(v, max_words)
+        return out
+    if isinstance(obj, list):
+        return [_truncate_repl_streams(item, max_words) for item in obj]
+    if isinstance(obj, tuple):
+        return tuple(_truncate_repl_streams(item, max_words) for item in obj)
+    return obj
 
 
 class RLMLogger:
     """
     Captures trajectory (run metadata + iterations) for each completion.
-    By default only captures in memory; set log_dir to also save to disk.
+    By default only captures in memory; set log_dir to also save to JSON-lines files.
 
     - log_dir=None: trajectory is available via get_trajectory() and can be
       attached to RLMChatCompletion.metadata (no disk write).
     - log_dir="path": same capture plus appends to a JSONL file per run.
+
+    truncate_repl_output_words: When not None, stdout and stderr strings anywhere in
+    logged iteration payloads (including nested subcall metadata) are truncated to
+    this many whitespace-separated words, with a suffix noting how many were omitted.
+    Pass None to keep full streams. Default is 200.
     """
 
-    def __init__(self, log_dir: str | None = None, file_name: str = "rlm"):
+    def __init__(
+        self,
+        log_dir: str | None = None,
+        file_name: str = "rlm",
+        *,
+        truncate_repl_output_words: int | None = 200,
+    ):
         self._save_to_disk = log_dir is not None
         self.log_dir = log_dir
         self.log_file_path: str | None = None
+        self._truncate_repl_output_words = truncate_repl_output_words
         if self._save_to_disk and log_dir:
             os.makedirs(log_dir, exist_ok=True)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -59,12 +100,14 @@ class RLMLogger:
     def log(self, iteration: RLMIteration) -> None:
         """Capture one iteration (and optionally append to file)."""
         self._iteration_count += 1
-        entry = {
+        entry: dict[str, Any] = {
             "type": "iteration",
             "iteration": self._iteration_count,
             "timestamp": datetime.now().isoformat(),
             **iteration.to_dict(),
         }
+        if self._truncate_repl_output_words is not None:
+            entry = _truncate_repl_streams(entry, self._truncate_repl_output_words)
         self._iterations.append(entry)
 
         if self._save_to_disk and self.log_file_path:
