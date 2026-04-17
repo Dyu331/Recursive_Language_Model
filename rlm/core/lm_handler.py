@@ -6,6 +6,7 @@ Uses a multi-threaded socket server. Protocol: 4-byte length prefix + JSON paylo
 
 import asyncio
 import time
+from collections.abc import Callable
 from socketserver import StreamRequestHandler, ThreadingTCPServer
 from threading import Thread
 
@@ -66,6 +67,13 @@ class LMRequestHandler(StreamRequestHandler):
         content = client.completion(request.prompt)
         end_time = time.perf_counter()
 
+        if request.depth >= 1 and handler._repl_depth_usage_callback is not None:
+            try:
+                root_model = request.model or client.model_name
+                handler._repl_depth_usage_callback(str(root_model))
+            except Exception:
+                pass
+
         model_usage = client.get_last_usage()
         root_model = request.model or client.model_name
         usage_summary = UsageSummary(model_usage_summaries={root_model: model_usage})
@@ -97,6 +105,18 @@ class LMRequestHandler(StreamRequestHandler):
 
         results = asyncio.run(run_all())
         end_time = time.perf_counter()
+
+        if (
+            request.depth >= 1
+            and handler._repl_depth_usage_callback is not None
+            and request.prompts
+        ):
+            try:
+                rm = str(request.model or client.model_name)
+                for _ in request.prompts:
+                    handler._repl_depth_usage_callback(rm)
+            except Exception:
+                pass
 
         total_time = end_time - start_time
         model_usage = client.get_last_usage()
@@ -139,6 +159,7 @@ class LMHandler:
         port: int = 0,  # auto-assign available port
         other_backend_client: BaseLM | None = None,
         batch_max_concurrent: int = 16,
+        repl_depth_usage_callback: Callable[[str], None] | None = None,
     ):
         self.default_client = client
         self.other_backend_client = other_backend_client
@@ -148,6 +169,7 @@ class LMHandler:
         self._thread: Thread | None = None
         self._port = port
         self.batch_max_concurrent = batch_max_concurrent
+        self._repl_depth_usage_callback = repl_depth_usage_callback
 
         self.register_client(client.model_name, client)
 

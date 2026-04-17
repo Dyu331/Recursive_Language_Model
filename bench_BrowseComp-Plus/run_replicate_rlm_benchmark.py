@@ -195,6 +195,7 @@ def resolve_output_file(
 
 
 # Subagent models used across baselines (gpt-5.4-* and gpt-5-mini share the "mini" bucket).
+# Keep bucket rules in sync with bench_Oolong_real/run_replicate_rlm_benchmark.py.
 _SUBCALL_NANO_MARKERS: tuple[str, ...] = ("gpt-5.4-nano",)
 _SUBCALL_MINI_MARKERS: tuple[str, ...] = ("gpt-5.4-mini", "gpt-5-mini")
 
@@ -204,6 +205,9 @@ def _increment_subcall_bucket(counts: dict[str, int], model: str) -> None:
     if any(marker in m for marker in _SUBCALL_NANO_MARKERS):
         counts["nano"] += 1
     elif any(marker in m for marker in _SUBCALL_MINI_MARKERS):
+        counts["mini"] += 1
+    elif m and m != "unknown":
+        # Subagent LM call with a model id that does not contain our markers (still count).
         counts["mini"] += 1
 
 

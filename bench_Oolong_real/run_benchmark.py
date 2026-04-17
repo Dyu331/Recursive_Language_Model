@@ -1,8 +1,17 @@
+import sys
+from pathlib import Path
+
+# Allow `python bench_Oolong_real/run_benchmark.py` without reinstall: repo root must be on sys.path
+# (script dir is bench_Oolong_real/, so `benchmark_tools` at project root is not found otherwise).
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import argparse
 import json
 import os
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from dotenv import load_dotenv
 
@@ -63,6 +72,46 @@ def parse_args() -> argparse.Namespace:
         default="default",
     )
     parser.add_argument("--baseline", action="store_true")
+    parser.add_argument(
+        "--palace-poc",
+        action="store_true",
+        help=(
+            "Index context_window_text in an ephemeral MemPalace and add search_memories() "
+            "to the REPL (requires mempalace-poc extra). Lenient: full transcript stays in context."
+        ),
+    )
+    parser.add_argument(
+        "--palace-poc-strict",
+        action="store_true",
+        help=(
+            "Same as --palace-poc but omit context_window_text from context; answer using "
+            "search_memories only. Implies --palace-poc."
+        ),
+    )
+    parser.add_argument(
+        "--palace-poc-verbose",
+        action="store_true",
+        help=(
+            "With --palace-poc / --palace-poc-strict: print wing/room structure and per-drawer "
+            "text previews to stdout right after indexing (before RLM runs)."
+        ),
+    )
+    parser.add_argument(
+        "--palace-poc-by-speaker",
+        action="store_true",
+        help=(
+            "With palace PoC: grouped by-speaker drawers (dominant room, _mixed on ties), "
+            "_preamble + list_taxonomy(). Requires --palace-poc or --palace-poc-strict."
+        ),
+    )
+    parser.add_argument(
+        "--palace-poc-by-block",
+        action="store_true",
+        help=(
+            "With palace PoC: temporal block_001… rooms (overlapping line windows), "
+            "list_taxonomy(). Mutually exclusive with --palace-poc-by-speaker."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -161,20 +210,53 @@ def load_examples(
     return matches
 
 
-def build_context_payload(example: OolongRealExample) -> dict[str, Any]:
-    return {
+def build_context_payload(
+    example: OolongRealExample, *, palace_poc_strict: bool = False
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "example_id": example.example_id,
         "context_window_id": example.context_window_id,
         "campaign": example.campaign,
         "episodes": list(example.episodes),
         "question_type": example.question_type,
         "question": example.question,
-        "context_window_text": example.context_window_text,
     }
+    if palace_poc_strict:
+        payload["palace_poc_strict"] = True
+    else:
+        payload["context_window_text"] = example.context_window_text
+    return payload
 
 
-def build_prompt() -> str:
-    return (
+def build_prompt(
+    *,
+    palace_poc: bool = False,
+    n_palace_drawers: int = 0,
+    palace_poc_strict: bool = False,
+    palace_poc_by_speaker: bool = False,
+    palace_poc_by_block: bool = False,
+) -> str:
+    if palace_poc_strict:
+        from benchmark_tools.ephemeral_mempalace_poc import palace_poc_prompt_hint_strict
+
+        prefix = palace_poc_prompt_hint_strict(
+            n_palace_drawers,
+            palace_poc_by_speaker=palace_poc_by_speaker,
+            palace_poc_by_block=palace_poc_by_block,
+        )
+        return (
+            prefix
+            + "You are running inside an RLM REPL. The variable `context` contains the question in "
+            "context['question'] and metadata (example_id, campaign, episodes, question_type) but "
+            "does NOT contain the raw transcript.\n\n"
+            "Task: Answer using ONLY information retrieved via `search_memories(query)` from the indexed "
+            "transcript. Use the REPL to search, then aggregate evidence. You may use llm_query / rlm_query "
+            "on retrieved text, but each call must **include that text in the prompt** (verbatim excerpts or "
+            "a variable holding them)—subagents do not see the palace or empty context. "
+            "Return the final answer with FINAL_VAR('answer')."
+        )
+
+    base = (
         "You are running inside an RLM REPL. The variable `context` is available and contains: "
         "(1) an Oolong Real question in context['question'] and (2) a long Dungeons and Dragons transcript "
         "in context['context_window_text']. Additional metadata includes context['example_id'], "
@@ -185,6 +267,18 @@ def build_prompt() -> str:
         "In a REPL block, print the keys of `context`, then compute an answer. Return the final answer with "
         "FINAL_VAR('answer')."
     )
+    if palace_poc:
+        from benchmark_tools.ephemeral_mempalace_poc import palace_poc_prompt_hint
+
+        return (
+            palace_poc_prompt_hint(
+                n_palace_drawers,
+                palace_poc_by_speaker=palace_poc_by_speaker,
+                palace_poc_by_block=palace_poc_by_block,
+            )
+            + base
+        )
+    return base
 
 
 def build_baseline_prompt(example: OolongRealExample) -> list[dict[str, str]]:
@@ -231,6 +325,21 @@ def main() -> None:
     if not os.getenv("OPENAI_API_KEY2"):
         raise ValueError("OPENAI_API_KEY2 is required to run this benchmark runner.")
 
+    palace_poc = args.palace_poc or args.palace_poc_strict
+    palace_poc_strict = args.palace_poc_strict
+    palace_poc_by_speaker = args.palace_poc_by_speaker
+    palace_poc_by_block = args.palace_poc_by_block
+    if palace_poc_by_speaker and palace_poc_by_block:
+        raise ValueError(
+            "--palace-poc-by-speaker and --palace-poc-by-block are mutually exclusive."
+        )
+    if palace_poc_by_speaker and not palace_poc:
+        raise ValueError("--palace-poc-by-speaker requires --palace-poc or --palace-poc-strict.")
+    if palace_poc_by_block and not palace_poc:
+        raise ValueError("--palace-poc-by-block requires --palace-poc or --palace-poc-strict.")
+    if palace_poc and args.baseline:
+        raise ValueError("--palace-poc / --palace-poc-strict cannot be combined with --baseline.")
+
     allowed_episode_counts = {2} if args.allow_two_episodes else {1}
     data_path = (
         DEFAULT_TWO_EPISODE_DATA_PATH
@@ -262,7 +371,7 @@ def main() -> None:
 
     if args.baseline:
         baseline_client = cast(Any, get_client("openai", backend_kwargs))
-    else:
+    elif not palace_poc:
         logger = RLMLogger(log_dir="./bench_Oolong_real/logs")
         rlm = RLM(
             backend="openai",
@@ -275,6 +384,8 @@ def main() -> None:
             logger=logger,
             custom_system_prompt=get_custom_system_prompt(args.system_prompt),
         )
+    else:
+        logger = RLMLogger(log_dir="./bench_Oolong_real/logs")
 
     try:
         for example in examples:
@@ -285,14 +396,67 @@ def main() -> None:
             print("question_type:", example.question_type)
             print("context_chars:", len(example.context_window_text))
             print("question:", example.question)
-            print("mode:", "baseline" if args.baseline else "rlm")
+            mode = "baseline" if args.baseline else "rlm"
+            if palace_poc:
+                mode += "_palace_poc_strict" if palace_poc_strict else "_palace_poc"
+                if palace_poc_by_speaker:
+                    mode += "_by_speaker"
+                if palace_poc_by_block:
+                    mode += "_by_block"
+            print("mode:", mode)
             print("model_name:", args.model_name)
             print("system_prompt:", args.system_prompt)
 
             if args.baseline:
                 response = baseline_client.completion(build_baseline_prompt(example))
+            elif palace_poc:
+                from benchmark_tools.ephemeral_mempalace_poc import build_ephemeral_palace_tools
+
+                ingest_mode: Literal["sliding", "by_speaker", "by_block"] = "sliding"
+                if palace_poc_by_speaker:
+                    ingest_mode = "by_speaker"
+                elif palace_poc_by_block:
+                    ingest_mode = "by_block"
+                custom_tools, cleanup, n_drawers = build_ephemeral_palace_tools(
+                    example.context_window_text,
+                    task_id=example.example_id,
+                    metadata_prefix="oolong",
+                    verbose=args.palace_poc_verbose,
+                    ingest=ingest_mode,
+                )
+                rlm_one = RLM(
+                    backend="openai",
+                    backend_kwargs=backend_kwargs,
+                    subagent_backend_kwargs=subagent_backend_kwargs,
+                    environment="local",
+                    max_depth=2,
+                    compaction=True,
+                    verbose=True,
+                    logger=logger,
+                    custom_system_prompt=get_custom_system_prompt(args.system_prompt),
+                    custom_tools=custom_tools,
+                )
+                try:
+                    context_payload = build_context_payload(
+                        example, palace_poc_strict=palace_poc_strict
+                    )
+                    result = rlm_one.completion(
+                        context_payload,
+                        root_prompt=build_prompt(
+                            palace_poc=True,
+                            n_palace_drawers=n_drawers,
+                            palace_poc_strict=palace_poc_strict,
+                            palace_poc_by_speaker=palace_poc_by_speaker,
+                            palace_poc_by_block=palace_poc_by_block,
+                        ),
+                    )
+                    response = result.response
+                finally:
+                    rlm_one.close()
+                    cleanup()
             else:
                 context_payload = build_context_payload(example)
+                assert rlm is not None
                 result = rlm.completion(context_payload, root_prompt=build_prompt())
                 response = result.response
 

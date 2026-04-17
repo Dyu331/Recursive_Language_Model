@@ -1,6 +1,7 @@
 """Tests for rlm.utils.eval_success judge JSON parsing and normalization."""
 
 import json
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -79,3 +80,37 @@ def test_serialize_eval_row_order() -> None:
     assert keys[-1] == "format_error"
     assert data["success"] is True
     assert data["format_error"] is False
+
+
+def test_process_jsonl_file_skips_fully_graded_rows(tmp_path) -> None:
+    path = tmp_path / "results.jsonl"
+    row = {
+        "ground_truth": "a",
+        "response": "b",
+        "success": False,
+        "format_error": False,
+    }
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    client = MagicMock()
+    ev, sk, wn, fe, bf = es.process_jsonl_file(path, client)
+    assert (ev, sk, wn, fe, bf) == (0, 1, 0, 0, 0)
+    client.completion.assert_not_called()
+
+
+def test_process_jsonl_file_force_reeval_overwrites_booleans(tmp_path) -> None:
+    path = tmp_path / "results.jsonl"
+    row = {
+        "ground_truth": "a",
+        "response": "b",
+        "success": False,
+        "format_error": False,
+    }
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    client = MagicMock()
+    client.completion.return_value = '{"success": true, "format_error": false}'
+    ev, sk, wn, fe, bf = es.process_jsonl_file(path, client, force_reeval=True)
+    assert (ev, sk, wn, fe, bf) == (1, 0, 0, 0, 0)
+    client.completion.assert_called_once()
+    out = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    assert out["success"] is True
+    assert out["format_error"] is False

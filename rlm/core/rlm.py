@@ -1,3 +1,5 @@
+import json
+import os
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -255,7 +257,12 @@ class RLM:
                 default_subagent_backend_kwargs or {},
             )
 
-        lm_handler = LMHandler(client, other_backend_client=other_backend_client)
+        _repl_cb = self._repl_llm_usage_tick if self._user_on_subcall_start is not None else None
+        lm_handler = LMHandler(
+            client,
+            other_backend_client=other_backend_client,
+            repl_depth_usage_callback=_repl_cb,
+        )
 
         if (
             other_backend_client is not None
@@ -270,6 +277,39 @@ class RLM:
                 lm_handler.register_client(other_client.model_name, other_client)
 
         lm_handler.start()
+
+        # region agent log
+        try:
+            import resource
+
+            _nf = len(os.listdir("/dev/fd"))
+            _rs, _rh = resource.getrlimit(resource.RLIMIT_NOFILE)
+            with open(
+                "/Users/dannyyu/Desktop/rlm/.cursor/debug-1f32bd.log",
+                "a",
+                encoding="utf-8",
+            ) as _df:
+                _df.write(
+                    json.dumps(
+                        {
+                            "sessionId": "1f32bd",
+                            "hypothesisId": "H3_handler_env",
+                            "location": "rlm.py:_spawn_completion_context",
+                            "message": "after_lm_handler_start",
+                            "data": {
+                                "n_fds": _nf,
+                                "rlimit_soft": _rs,
+                                "rlimit_hard": _rh,
+                                "rlm_depth": self.depth,
+                            },
+                            "timestamp": int(time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except OSError:
+            pass
+        # endregion
 
         # Environment: reuse if persistent, otherwise create fresh
         if self.persistent and self._persistent_env is not None:
@@ -305,9 +345,73 @@ class RLM:
         try:
             yield lm_handler, environment
         finally:
+            # region agent log
+            try:
+                import resource
+
+                _nf = len(os.listdir("/dev/fd"))
+                _rs, _rh = resource.getrlimit(resource.RLIMIT_NOFILE)
+                with open(
+                    "/Users/dannyyu/Desktop/rlm/.cursor/debug-1f32bd.log",
+                    "a",
+                    encoding="utf-8",
+                ) as _df:
+                    _df.write(
+                        json.dumps(
+                            {
+                                "sessionId": "1f32bd",
+                                "hypothesisId": "H3_handler_env",
+                                "location": "rlm.py:_spawn_completion_context",
+                                "message": "spawn_ctx_finally_before_stop",
+                                "data": {
+                                    "n_fds": _nf,
+                                    "rlimit_soft": _rs,
+                                    "rlimit_hard": _rh,
+                                    "rlm_depth": self.depth,
+                                },
+                                "timestamp": int(time.time() * 1000),
+                            }
+                        )
+                        + "\n"
+                    )
+            except OSError:
+                pass
+            # endregion
             lm_handler.stop()
             if not self.persistent and hasattr(environment, "cleanup"):
                 environment.cleanup()
+            # region agent log
+            try:
+                import resource
+
+                _nf2 = len(os.listdir("/dev/fd"))
+                _rs2, _rh2 = resource.getrlimit(resource.RLIMIT_NOFILE)
+                with open(
+                    "/Users/dannyyu/Desktop/rlm/.cursor/debug-1f32bd.log",
+                    "a",
+                    encoding="utf-8",
+                ) as _df:
+                    _df.write(
+                        json.dumps(
+                            {
+                                "sessionId": "1f32bd",
+                                "hypothesisId": "H1_fd_across_trials",
+                                "location": "rlm.py:_spawn_completion_context",
+                                "message": "spawn_ctx_after_stop_cleanup",
+                                "data": {
+                                    "n_fds": _nf2,
+                                    "rlimit_soft": _rs2,
+                                    "rlimit_hard": _rh2,
+                                    "rlm_depth": self.depth,
+                                },
+                                "timestamp": int(time.time() * 1000),
+                            }
+                        )
+                        + "\n"
+                    )
+            except OSError:
+                pass
+            # endregion
 
     def _setup_prompt(self, prompt: str | dict[str, Any]) -> list[dict[str, Any]]:
         """
@@ -721,6 +825,36 @@ class RLM:
         self.verbose.print_subcall_complete(depth, model, duration, error_or_none)
         if self._user_on_subcall_complete is not None:
             self._user_on_subcall_complete(depth, model, duration, error_or_none)
+
+    def _repl_llm_usage_tick(self, root_model: str) -> None:
+        """Notify benchmark-style counters for llm_query from the REPL (not rlm_query / _subcall)."""
+        if self._user_on_subcall_start is None:
+            return
+        try:
+            self._user_on_subcall_start(self.depth + 1, str(root_model), "")
+        except Exception:
+            pass
+        # region agent log
+        try:
+            with open(
+                "/Users/dannyyu/Desktop/rlm/.cursor/debug-1f32bd.log", "a", encoding="utf-8"
+            ) as _agent_f:
+                _agent_f.write(
+                    json.dumps(
+                        {
+                            "sessionId": "1f32bd",
+                            "hypothesisId": "H5_repl_llm_tick",
+                            "location": "rlm.py:_repl_llm_usage_tick",
+                            "message": "counted_repl_llm_query",
+                            "data": {"rlm_depth": self.depth, "root_model": str(root_model)},
+                            "timestamp": int(time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+        # endregion
 
     def _subcall(self, prompt: str, model: str | None = None) -> RLMChatCompletion:
         """
