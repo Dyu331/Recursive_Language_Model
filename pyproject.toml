@@ -40,13 +40,15 @@ modal = ["modal>=0.73.0", "dill>=0.3.7"]
 e2b = ["e2b-code-interpreter>=0.0.11", "dill>=0.3.7"]
 daytona = ["daytona>=0.128.1", "dill>=0.3.7"]
 prime = ["prime-sandboxes>=0.2.0", "dill>=0.3.7"]
+# Ephemeral Chroma palace + search for benchmark baselines (Oolong PoC). Pins chromadb for MemPalace compatibility.
+mempalace-poc = ["mempalace>=3.0,<4", "chromadb>=0.5.0,<0.7"]
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["rlm", "rlm.*"]
+include = ["rlm", "rlm.*", "benchmark_tools", "benchmark_tools.*"]
 
 [dependency-groups]
 dev = [
@@ -77,6 +79,15 @@ select = [
 ignore = [
     "E501",  # line too long (handled by formatter)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# sys.path must be adjusted before other imports so `benchmark_tools` resolves when running as a script.
+"bench_Oolong_real/run_benchmark.py" = ["E402"]
+"bench_Oolong_real/run_multi_model_benchmark.py" = ["E402"]
+"bench_Oolong_real/run_rlm_mempalace_benchmark.py" = ["E402"]
+"bench_Oolong_synth/run_benchmark.py" = ["E402"]
+"bench_Oolong_synth/run_rlm_mempalace_benchmark.py" = ["E402"]
+"tests/test_oolong_synth_mempalace_reuse.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"

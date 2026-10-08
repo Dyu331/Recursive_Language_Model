@@ -4,13 +4,19 @@ Deterministic multi-baseline Oolong Real benchmark: fixed task IDs, 2 trials eac
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import argparse
 import json
 import os
 from collections.abc import Callable
 from datetime import datetime
-from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import run_benchmark as ob
 from dotenv import load_dotenv
@@ -84,6 +90,36 @@ def parse_args() -> argparse.Namespace:
             "dynamic_model_picker",
         ],
         default="default",
+    )
+    p.add_argument(
+        "--palace-poc",
+        action="store_true",
+        help="Ephemeral MemPalace + search_memories per task (requires mempalace-poc extra).",
+    )
+    p.add_argument(
+        "--palace-poc-strict",
+        action="store_true",
+        help="Palace PoC without context_window_text in context. Implies --palace-poc.",
+    )
+    p.add_argument(
+        "--palace-poc-verbose",
+        action="store_true",
+        help=("With palace PoC: print wing/room structure and per-drawer previews after indexing."),
+    )
+    p.add_argument(
+        "--palace-poc-by-speaker",
+        action="store_true",
+        help=(
+            "With palace PoC: grouped by-speaker rooms + list_taxonomy (requires --palace-poc or strict)."
+        ),
+    )
+    p.add_argument(
+        "--palace-poc-by-block",
+        action="store_true",
+        help=(
+            "With palace PoC: temporal block_NNN rooms + list_taxonomy. "
+            "Mutually exclusive with --palace-poc-by-speaker."
+        ),
     )
     return p.parse_args()
 
@@ -170,6 +206,19 @@ def main() -> None:
     if not os.getenv("OPENAI_API_KEY2"):
         raise ValueError("OPENAI_API_KEY2 is required to run this benchmark runner.")
 
+    palace_poc = args.palace_poc or args.palace_poc_strict
+    palace_poc_strict = args.palace_poc_strict
+    palace_poc_by_speaker = args.palace_poc_by_speaker
+    palace_poc_by_block = args.palace_poc_by_block
+    if palace_poc_by_speaker and palace_poc_by_block:
+        raise ValueError(
+            "--palace-poc-by-speaker and --palace-poc-by-block are mutually exclusive."
+        )
+    if palace_poc_by_speaker and not palace_poc:
+        raise ValueError("--palace-poc-by-speaker requires --palace-poc or --palace-poc-strict.")
+    if palace_poc_by_block and not palace_poc:
+        raise ValueError("--palace-poc-by-block requires --palace-poc or --palace-poc-strict.")
+
     examples = load_frozen_examples()
 
     active_suite = _PROMPT_TO_BASELINES[args.system_prompt]
@@ -198,18 +247,20 @@ def main() -> None:
         backend_kwargs = ob.get_backend_kwargs(root_model)
         sub_backend_kwargs = ob.get_backend_kwargs(sub_model)
         logger = RLMLogger(log_dir=str(_BENCH_DIR / "logs"))
-        rlm = RLM(
-            backend="openai",
-            backend_kwargs=backend_kwargs,
-            subagent_backend_kwargs=sub_backend_kwargs,
-            environment="local",
-            max_depth=2,
-            compaction=True,
-            verbose=True,
-            logger=logger,
-            custom_system_prompt=ob.get_custom_system_prompt(args.system_prompt),
-            on_subcall_start=on_subcall_start,
-        )
+        rlm: RLM | None = None
+        if not palace_poc:
+            rlm = RLM(
+                backend="openai",
+                backend_kwargs=backend_kwargs,
+                subagent_backend_kwargs=sub_backend_kwargs,
+                environment="local",
+                max_depth=2,
+                compaction=True,
+                verbose=True,
+                logger=logger,
+                custom_system_prompt=ob.get_custom_system_prompt(args.system_prompt),
+                on_subcall_start=on_subcall_start,
+            )
         try:
             with open(results_path, open_mode, encoding="utf-8") as out_f:
                 for ex in examples:
@@ -221,8 +272,72 @@ def main() -> None:
                         subcalls[_MINI_MODEL] = 0
                         subcalls[_NANO_MODEL] = 0
                         print(f"run {baseline_name} task={ex.example_id} trial={trial}")
-                        payload = ob.build_context_payload(ex)
-                        result = rlm.completion(payload, root_prompt=ob.build_prompt())
+                        if palace_poc:
+                            from benchmark_tools.ephemeral_mempalace_poc import (
+                                build_ephemeral_palace_tools,
+                            )
+
+                            ingest_mode: Literal["sliding", "by_speaker", "by_block"] = "sliding"
+                            if palace_poc_by_speaker:
+                                ingest_mode = "by_speaker"
+                            elif palace_poc_by_block:
+                                ingest_mode = "by_block"
+                            custom_tools, cleanup, n_drawers = build_ephemeral_palace_tools(
+                                ex.context_window_text,
+                                task_id=ex.example_id,
+                                metadata_prefix="oolong",
+                                verbose=args.palace_poc_verbose,
+                                ingest=ingest_mode,
+                            )
+                            rlm_one = RLM(
+                                backend="openai",
+                                backend_kwargs=backend_kwargs,
+                                subagent_backend_kwargs=sub_backend_kwargs,
+                                environment="local",
+                                max_depth=2,
+                                compaction=True,
+                                verbose=True,
+                                logger=logger,
+                                custom_system_prompt=ob.get_custom_system_prompt(
+                                    args.system_prompt
+                                ),
+                                custom_tools=custom_tools,
+                                on_subcall_start=on_subcall_start,
+                            )
+                            try:
+                                payload = ob.build_context_payload(
+                                    ex, palace_poc_strict=palace_poc_strict
+                                )
+                                result = rlm_one.completion(
+                                    payload,
+                                    root_prompt=ob.build_prompt(
+                                        palace_poc=True,
+                                        n_palace_drawers=n_drawers,
+                                        palace_poc_strict=palace_poc_strict,
+                                        palace_poc_by_speaker=palace_poc_by_speaker,
+                                        palace_poc_by_block=palace_poc_by_block,
+                                    ),
+                                )
+                            finally:
+                                rlm_one.close()
+                                cleanup()
+                        else:
+                            assert rlm is not None
+                            payload = ob.build_context_payload(ex)
+                            result = rlm.completion(payload, root_prompt=ob.build_prompt())
+                        cond = "default"
+                        if palace_poc_strict and palace_poc_by_speaker:
+                            cond = "palace_poc_strict_by_speaker"
+                        elif palace_poc_strict and palace_poc_by_block:
+                            cond = "palace_poc_strict_by_block"
+                        elif palace_poc_strict:
+                            cond = "palace_poc_strict"
+                        elif palace_poc and palace_poc_by_speaker:
+                            cond = "palace_poc_by_speaker"
+                        elif palace_poc and palace_poc_by_block:
+                            cond = "palace_poc_by_block"
+                        elif palace_poc:
+                            cond = "palace_poc"
                         row: dict[str, Any] = {
                             "task_id": ex.example_id,
                             "query": ex.question,
@@ -235,12 +350,14 @@ def main() -> None:
                             "subagent_calls_nano": subcalls[_NANO_MODEL],
                             "total_time": result.execution_time,
                             "input_tokens": result.usage_summary.total_input_tokens,
+                            "condition": cond,
                         }
                         out_f.write(json.dumps(row, ensure_ascii=False) + "\n")
                         out_f.flush()
                         completed.add(key)
         finally:
-            rlm.close()
+            if rlm is not None:
+                rlm.close()
 
         symlink_latest(args.system_prompt, baseline_name, results_path)
         print(f"wrote {results_path}")

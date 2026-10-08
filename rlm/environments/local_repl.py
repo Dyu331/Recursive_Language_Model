@@ -146,6 +146,39 @@ class LocalREPL(NonIsolatedEnv):
             **kwargs,
         )
 
+        # region agent log
+        try:
+            import resource
+
+            _nf = len(os.listdir("/dev/fd"))
+            _rs, _rh = resource.getrlimit(resource.RLIMIT_NOFILE)
+            with open(
+                "/Users/dannyyu/Desktop/rlm/.cursor/debug-1f32bd.log",
+                "a",
+                encoding="utf-8",
+            ) as _df:
+                _df.write(
+                    json.dumps(
+                        {
+                            "sessionId": "1f32bd",
+                            "hypothesisId": "H4_repl_init",
+                            "location": "local_repl.py:__init__",
+                            "message": "local_repl_init_enter",
+                            "data": {
+                                "n_fds": _nf,
+                                "rlimit_soft": _rs,
+                                "rlimit_hard": _rh,
+                                "depth": depth,
+                            },
+                            "timestamp": int(time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except OSError:
+            pass
+        # endregion
+
         self.lm_handler_address = lm_handler_address
         self.subcall_fn = subcall_fn  # Callback for recursive RLM calls (depth > 1 support)
         self.original_cwd = os.getcwd()

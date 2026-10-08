@@ -3,7 +3,8 @@ Benchmark-agnostic LLM judge for filling `success` and `format_error` in results
 
 Each line must be a JSON object with `ground_truth` and `response`. Rows with
 `success: null` are evaluated in-place (both fields). Rows with boolean `success`
-and boolean `format_error` are skipped.
+and boolean `format_error` are skipped unless `--force-reeval` is set (then every
+row with `ground_truth` and `response` is re-judged and both fields overwritten).
 
 With `--backfill-format-error`, rows that already have boolean `success` but are
 missing or non-boolean `format_error` get one judge call: `success` is preserved
@@ -39,6 +40,7 @@ Use this exact shape: {{"success": <true or false>, "format_error": <true or fal
 
 Field "success" (lenient match to ground truth):
 - true if the model response conveys the same answer as ground truth, even if formatting, capitalisation, or punctuation differ.
+- If ground_truth looks like a Python list of quoted strings (e.g. "['less common than']" or "['a', 'b']"), treat each listed string as an acceptable answer: success is true if the response clearly states the same claim as any one of them, even if the model adds a prefix like "Answer:" or rephrases with extra labels (e.g. "numeric value is less common than abbreviation" matches "less common than" when that is the comparative claim).
 - false if the answer is substantively wrong, or the model gives a terminal refusal/uncertainty as its final stance.
 
 Field "format_error":
@@ -131,7 +133,11 @@ def discover_results_jsonl(root: Path) -> list[Path]:
 
 
 def process_jsonl_file(
-    path: Path, client: BaseLM, *, backfill_format_error: bool = False
+    path: Path,
+    client: BaseLM,
+    *,
+    backfill_format_error: bool = False,
+    force_reeval: bool = False,
 ) -> tuple[int, int, int, int, int]:
     """
     Returns (evaluated_count, skipped_count, warn_count, format_error_count, backfill_count).
@@ -152,7 +158,7 @@ def process_jsonl_file(
         success = row.get("success")
         format_error = row.get("format_error")
 
-        if isinstance(success, bool) and isinstance(format_error, bool):
+        if isinstance(success, bool) and isinstance(format_error, bool) and not force_reeval:
             skipped += 1
             out_rows.append(json.dumps(row, ensure_ascii=False))
             continue
@@ -160,7 +166,7 @@ def process_jsonl_file(
         gt = row.get("ground_truth")
         resp = row.get("response")
 
-        if _needs_format_backfill(row, enabled=backfill_format_error):
+        if _needs_format_backfill(row, enabled=backfill_format_error) and not force_reeval:
             if gt is None or resp is None:
                 warned += 1
                 print(
@@ -182,7 +188,7 @@ def process_jsonl_file(
             out_rows.append(serialize_eval_row(row, suc, fe))
             continue
 
-        if success is not None:
+        if success is not None and not force_reeval:
             if backfill_format_error and not isinstance(success, bool):
                 warned += 1
                 print(
@@ -237,7 +243,9 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=(
             "Fill success and format_error in results.jsonl using an LLM judge. "
-            "By default only rows with success=null are evaluated; use "
+            "By default only rows with success=null are evaluated (rows with both "
+            "boolean success and format_error are skipped). Use --force-reeval to "
+            "re-judge every row that has ground_truth and response. Use "
             "--backfill-format-error to add format_error where success is already set."
         )
     )
@@ -259,6 +267,14 @@ def parse_args() -> argparse.Namespace:
         help=(
             "For rows with boolean success but missing or non-boolean format_error, "
             "call the judge once and set format_error only (success unchanged)."
+        ),
+    )
+    p.add_argument(
+        "--force-reeval",
+        action="store_true",
+        help=(
+            "Re-run the judge on every row with ground_truth and response, overwriting "
+            "success and format_error even when they are already booleans."
         ),
     )
     return p.parse_args()
@@ -293,7 +309,10 @@ def main() -> None:
     total_bf = 0
     for path in paths:
         ev, sk, wn, fe, bf = process_jsonl_file(
-            path, client, backfill_format_error=args.backfill_format_error
+            path,
+            client,
+            backfill_format_error=args.backfill_format_error,
+            force_reeval=args.force_reeval,
         )
         total_fe += fe
         total_bf += bf
